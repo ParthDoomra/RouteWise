@@ -1,453 +1,639 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { InteractiveGlobe } from '../components/InteractiveGlobe';
+import { ArrowRight, ShieldCheck, Zap, Sparkles, MapPin } from 'lucide-react';
+import { CustomerTrackingModal } from '../components/CustomerTrackingModal';
 
 export const LandingPage: React.FC = () => {
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
   return (
-    <div style={{ backgroundColor: '#000000', color: '#ffffff', fontFamily: "'Inter', sans-serif", minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
-      {/* ── Nav Bar ── */}
+      {/* ── Top Navigation Bar (Light Warm Theme) ── */}
       <header
         style={{
-          backgroundColor: '#000000',
-          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          backgroundColor: '#FAF7F2',
+          borderBottom: '1px solid var(--border-light)',
           padding: '0 2rem',
-          height: '64px',
+          height: '70px',
           display: 'flex',
           alignItems: 'center',
           position: 'sticky',
           top: 0,
           zIndex: 100,
+          boxShadow: '0 1px 3px rgba(43, 36, 30, 0.03)',
         }}
       >
-        <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Link to="/" style={{ fontSize: '1.35rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.02em', textDecoration: 'none' }}>
-            RouteWise
+        <div style={{ maxWidth: '1280px', margin: '0 auto', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', textDecoration: 'none' }}>
+            <div
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--primary)',
+                color: '#FAF7F2',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 800,
+                fontSize: '0.95rem',
+              }}
+            >
+              RW
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: 600, color: 'var(--text-main)', letterSpacing: '-0.02em', fontFamily: 'var(--font-serif)' }}>
+              Route<span style={{ color: '#C49746' }}>Wise</span>
+            </div>
           </Link>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <nav style={{ display: 'flex', alignItems: 'center', gap: '1.75rem' }}>
             <a
               href="#how-it-works"
               onClick={(e) => { e.preventDefault(); document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' }); }}
-              style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.72)', textDecoration: 'none', fontWeight: 500, cursor: 'pointer' }}
+              style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600, transition: 'color 160ms ease' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-main)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
             >
               How It Works
             </a>
             <a
               href="#features"
               onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); }}
-              style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.72)', textDecoration: 'none', fontWeight: 500, cursor: 'pointer' }}
+              style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600, transition: 'color 160ms ease' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-main)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
             >
-              Features
+              Key Capabilities
             </a>
-            <Link
-              to="/track/ORD-8942"
-              style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.72)', textDecoration: 'none', fontWeight: 500 }}
+            <button
+              type="button"
+              onClick={() => setIsTrackingModalOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '0.875rem',
+                color: 'var(--primary)',
+                fontWeight: 700,
+                cursor: 'pointer',
+                padding: 0,
+                transition: 'opacity 160ms ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.75')}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
             >
               Track Order
-            </Link>
+            </button>
             <Link
               to="/login"
               style={{
-                backgroundColor: '#ffffff',
-                color: '#000000',
-                padding: '0.6rem 1.5rem',
+                backgroundColor: '#201A16',
+                color: '#FAF7F2',
+                padding: '0.6rem 1.45rem',
                 borderRadius: '9999px',
                 textDecoration: 'none',
                 fontWeight: 600,
                 fontSize: '0.875rem',
-                letterSpacing: '0.24px',
+                letterSpacing: '0.01em',
+                transition: 'transform 160ms var(--ease-spring), background-color 160ms ease',
+                boxShadow: '0 2px 8px rgba(32, 26, 22, 0.18)',
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.03)')}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
             >
-              Sign In →
+              Dispatcher Portal &rarr;
             </Link>
-          </div>
+          </nav>
         </div>
       </header>
 
-      {/* ── Hero Band (Dark Canvas) ── */}
-      <section style={{ padding: '88px 2rem', backgroundColor: '#000000' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '3rem', alignItems: 'center' }}>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-            {/* Badge */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              backgroundColor: '#16181a',
-              border: '1px solid rgba(255,255,255,0.12)',
-              padding: '0.3rem 0.85rem',
-              borderRadius: '9999px',
-              width: 'fit-content',
-              fontSize: '0.75rem',
-              color: '#ffffff',
-              fontWeight: 600,
-              letterSpacing: '0.02em',
-            }}>
-              <span style={{ color: '#494fdf' }}>●</span> AI/ML Final Year Engineering Project
+      {/* ── Hero Section (Light Warm Theme + 3D WebGL Globe Background Layer) ── */}
+      <section
+        style={{
+          backgroundColor: '#F5F1EA',
+          position: 'relative',
+          overflow: 'hidden',
+          minHeight: '680px',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '80px 2rem 90px',
+        }}
+      >
+        {/* ── 1. Large 3D Rotating WebGL Globe as Background Layer ── */}
+        <div
+          style={{
+            position: 'absolute',
+            right: '-4%',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 'clamp(580px, 58vw, 920px)',
+            height: 'clamp(580px, 58vw, 920px)',
+            zIndex: 1,
+            pointerEvents: 'auto',
+            opacity: 1.0,
+          }}
+        >
+          <InteractiveGlobe />
+        </div>
+
+        {/* ── 2. Subtle Radial Light Mask for Perfect Text Readability ── */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            bottom: 0,
+            right: 0,
+            background: 'radial-gradient(circle at 18% 50%, rgba(245, 241, 234, 0.98) 0%, rgba(245, 241, 234, 0.88) 35%, rgba(245, 241, 234, 0.15) 62%, transparent 100%)',
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
+        />
+
+        {/* ── 3. Foreground Hero Text & Actions (Layered on top) ── */}
+        <div
+          style={{
+            maxWidth: '1280px',
+            margin: '0 auto',
+            width: '100%',
+            position: 'relative',
+            zIndex: 10,
+            pointerEvents: 'none', // Allow clicks to pass through except on interactive children
+          }}
+        >
+          <div
+            className="animate-enter"
+            style={{
+              maxWidth: '640px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.75rem',
+              pointerEvents: 'auto', // Re-enable interaction for buttons and text
+            }}
+          >
+            {/* Top Operational Badge */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.55rem',
+                backgroundColor: '#FAF7F2',
+                border: '1px solid var(--border-medium)',
+                padding: '0.4rem 1rem',
+                borderRadius: '9999px',
+                width: 'fit-content',
+                fontSize: '0.78rem',
+                color: 'var(--text-main)',
+                fontWeight: 700,
+                boxShadow: '0 1px 3px rgba(43, 36, 30, 0.04)',
+              }}
+            >
+              <span className="live-pulse-dot" style={{ backgroundColor: '#4A5D3A', width: '7px', height: '7px' }} />
+              <span style={{ color: 'var(--text-secondary)' }}>2-Opt Deterministic Routing • Claude AI Delay Dispatches</span>
             </div>
 
-            <h1 style={{
-              fontSize: 'clamp(36px, 5vw, 64px)',
-              fontWeight: 500,
-              lineHeight: 1.0,
-              letterSpacing: '-0.8px',
-              color: '#ffffff',
-            }}>
-              Algorithmic Fleet Dispatch & AI-Powered Delay Communication
+            {/* Editorial Serif Heading */}
+            <h1
+              style={{
+                fontSize: 'clamp(42px, 5.2vw, 68px)',
+                fontWeight: 500,
+                lineHeight: 1.08,
+                color: 'var(--text-main)',
+                letterSpacing: '-0.025em',
+              }}
+            >
+              Precision Fleet Logistics for the <em style={{ fontStyle: 'italic', color: 'var(--primary)' }}>Modern</em> Enterprise
             </h1>
 
-            <p style={{ fontSize: '1.125rem', color: 'rgba(255,255,255,0.72)', lineHeight: '1.56', letterSpacing: '-0.09px', maxWidth: '540px' }}>
-              RouteWise automates multi-stop vehicle route optimization using a custom Nearest Neighbor and 2-opt heuristic engine, backed by live simulated tracking and natural-language AI delay explanations.
+            {/* Clear Subtitle */}
+            <p
+              style={{
+                fontSize: '1.15rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.62,
+                maxWidth: '540px',
+                fontWeight: 450,
+              }}
+            >
+              RouteWise pairs sub-15ms 2-Opt multi-stop route optimization with real-time GPS telemetry and natural-language AI delay explanations — cutting transit mileage and building recipient confidence.
             </p>
 
+            {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
               <Link
                 to="/login"
+                className="btn btn-pill"
                 style={{
-                  backgroundColor: '#ffffff',
-                  color: '#000000',
+                  backgroundColor: '#201A16',
+                  color: '#FAF7F2',
                   padding: '14px 28px',
-                  borderRadius: '9999px',
-                  textDecoration: 'none',
-                  fontWeight: 600,
-                  fontSize: '1rem',
-                  letterSpacing: '0.24px',
+                  fontWeight: 700,
+                  fontSize: '0.95rem',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.55rem',
+                  boxShadow: '0 4px 14px rgba(32, 26, 22, 0.22)',
                 }}
               >
-                Launch Manager Console
+                <span>Launch Dispatch Console</span>
+                <ArrowRight size={16} />
               </Link>
-              <Link
-                to="/track/ORD-8942"
+
+              <button
+                type="button"
+                onClick={() => setIsTrackingModalOpen(true)}
+                className="btn btn-pill"
                 style={{
-                  backgroundColor: 'transparent',
-                  color: '#ffffff',
-                  border: '1px solid #ffffff',
-                  padding: '13px 27px',
-                  borderRadius: '9999px',
-                  textDecoration: 'none',
-                  fontWeight: 600,
-                  fontSize: '1rem',
-                  letterSpacing: '0.24px',
+                  backgroundColor: '#FAF7F2',
+                  color: 'var(--text-main)',
+                  border: '1px solid var(--border-medium)',
+                  padding: '14px 26px',
+                  fontWeight: 700,
+                  fontSize: '0.95rem',
+                  boxShadow: '0 1px 3px rgba(43, 36, 30, 0.04)',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--primary)';
+                  e.currentTarget.style.backgroundColor = '#FFFFFF';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-medium)';
+                  e.currentTarget.style.backgroundColor = '#FAF7F2';
                 }}
               >
-                Try Customer Tracking Demo
-              </Link>
-            </div>
-          </div>
-
-          {/* Route Visualiser Card */}
-          <div
-            style={{
-              backgroundColor: '#16181a',
-              borderRadius: '20px',
-              border: '1px solid rgba(255,255,255,0.12)',
-              padding: '2rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.12)', paddingBottom: '0.75rem' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(255,255,255,0.72)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Routing Engine Demo</span>
-              <span style={{ fontSize: '0.7rem', color: '#00a87e', backgroundColor: 'rgba(0,168,126,0.12)', padding: '0.2rem 0.6rem', borderRadius: '9999px', fontWeight: 600 }}>2-opt Converged</span>
+                <span>Live Customer Tracking Demo</span>
+              </button>
             </div>
 
-            <svg viewBox="0 0 400 240" style={{ width: '100%', height: 'auto', backgroundColor: '#0a0a0a', borderRadius: '12px' }}>
-              <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
-
-              <path d="M 50 180 L 120 70 L 220 150 L 340 60" fill="none" stroke="rgba(73,79,223,0.4)" strokeWidth="4" strokeDasharray="6 6" />
-              <path d="M 50 180 L 120 70 L 220 150 L 340 60" fill="none" stroke="#494fdf" strokeWidth="3" />
-
-              <circle cx="50" cy="180" r="10" fill="#00a87e" />
-              <text x="50" y="184" fontSize="10" fontWeight="bold" fill="#ffffff" textAnchor="middle">D</text>
-              <text x="50" y="205" fontSize="11" fill="rgba(255,255,255,0.5)" textAnchor="middle">Depot (Start)</text>
-
-              <circle cx="120" cy="70" r="9" fill="#494fdf" />
-              <text x="120" y="74" fontSize="10" fontWeight="bold" fill="#ffffff" textAnchor="middle">1</text>
-              <text x="120" y="50" fontSize="11" fill="rgba(255,255,255,0.72)" textAnchor="middle">Stop 1 (ORD-8940)</text>
-
-              <circle cx="220" cy="150" r="9" fill="#ec7e00" />
-              <text x="220" y="154" fontSize="10" fontWeight="bold" fill="#ffffff" textAnchor="middle">2</text>
-              <text x="220" y="175" fontSize="11" fill="#ec7e00" textAnchor="middle">Stop 2 (Delayed)</text>
-
-              <circle cx="340" cy="60" r="9" fill="#494fdf" />
-              <text x="340" y="64" fontSize="10" fontWeight="bold" fill="#ffffff" textAnchor="middle">3</text>
-              <text x="340" y="42" fontSize="11" fill="rgba(255,255,255,0.72)" textAnchor="middle">Stop 3 (Final Drop)</text>
-            </svg>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.25rem' }}>
-              <span>Distance: <strong style={{ color: '#ffffff' }}>24.6 km</strong></span>
-              <span>Algorithm Time: <strong style={{ color: '#ffffff' }}>&lt; 15ms</strong></span>
-              <span>AI Message Trigger: <strong style={{ color: '#00a87e' }}>Active</strong></span>
+            {/* Quick Metrics Card Bar */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '1.25rem',
+                paddingTop: '1.5rem',
+                borderTop: '1px solid var(--border-light)',
+                marginTop: '0.75rem',
+              }}
+            >
+              <div>
+                <div className="font-mono" style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--text-main)' }}>&lt; 15 ms</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>2-Opt Heuristic Latency</div>
+              </div>
+              <div>
+                <div className="font-mono" style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--primary)' }}>14.2%</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>Transit Distance Saved</div>
+              </div>
+              <div>
+                <div className="font-mono" style={{ fontSize: '1.55rem', fontWeight: 800, color: 'var(--status-emerald-text)' }}>94.2%</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>On-Time SLA Compliance</div>
+              </div>
             </div>
+
           </div>
         </div>
       </section>
 
-      {/* ── How It Works ── */}
-      <section id="how-it-works" style={{ padding: '100px 2rem', backgroundColor: '#000000', borderTop: '1px solid rgba(255,255,255,0.08)', scrollMarginTop: '64px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
+      {/* ── How It Works (Warm Cream Canvas + Curated Photography) ── */}
+      <section id="how-it-works" style={{ padding: '100px 2rem', backgroundColor: 'var(--bg-app)', scrollMarginTop: '70px', borderTop: '1px solid var(--border-light)' }}>
+        <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
 
-          <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              End-to-End Orchestration
+            </span>
             <h2 style={{
               fontSize: 'clamp(32px, 4vw, 48px)',
               fontWeight: 500,
-              color: '#ffffff',
-              letterSpacing: '-0.48px',
+              color: 'var(--text-main)',
+              marginTop: '0.4rem',
               lineHeight: 1.15,
             }}>
-              How RouteWise Works
+              How RouteWise Transforms Fleet Dispatch
             </h2>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1.05rem', marginTop: '1rem', lineHeight: 1.6 }}>
-              From incoming order to doorstep delivery — four stages, fully automated.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', marginTop: '0.75rem', lineHeight: 1.6 }}>
+              From initial dispatch intake to doorstep verification — four coordinated stages engineered for total operational clarity.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(270px, 1fr))', gap: '1.75rem' }}>
             {[
               {
-                icon: '📦',
                 num: '01',
-                title: 'Orders Come In',
-                desc: 'New delivery orders are logged into the system with pickup location, drop address, and package details.',
+                title: 'Order Manifest Intake',
+                desc: 'Incoming packages and multi-drop delivery manifests are captured with recipient delivery windows, addresses, and payload weights.',
+                img: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80',
+                alt: 'Modern logistics warehouse sorting facility',
               },
               {
-                icon: '🧮',
                 num: '02',
-                title: 'Routes Auto-Optimized',
-                desc: 'The routing engine calculates the most efficient multi-stop path using Nearest Neighbor + 2-opt heuristics.',
+                title: '2-Opt Route Optimization',
+                desc: 'Our client-side heuristic engine calculates optimal multi-stop sequences in sub-15ms, eliminating intersecting delivery loops.',
+                img: 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=600&q=80',
+                alt: 'City logistics map and traffic telemetry visualization',
               },
               {
-                icon: '🚛',
                 num: '03',
-                title: 'Drivers Get Directions',
-                desc: 'Assigned drivers receive their optimized route sequence on their device and begin deliveries.',
+                title: 'Driver Console Guidance',
+                desc: 'Couriers receive ordered turn-by-turn waypoint manifests on mobile devices with instant one-tap delay and completion logging.',
+                img: 'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=600&q=80',
+                alt: 'Delivery courier vehicle on route in city street',
               },
               {
-                icon: '📡',
                 num: '04',
-                title: 'Customers Get Live Updates',
-                desc: 'Real-time tracking and AI-generated delay notifications are sent to customers automatically.',
+                title: 'AI Customer Delay Notices',
+                desc: 'When GPS telemetry detects traffic bottlenecks, Claude AI drafts reassuring natural-language notices with revised arrival ETAs.',
+                img: 'https://images.unsplash.com/photo-1556740758-90de374c12ad?auto=format&fit=crop&w=600&q=80',
+                alt: 'Customer receiving doorstep package notification',
               },
-            ].map((step) => (
+            ].map((step, idx) => (
               <div
                 key={step.num}
+                className={`card card-hover-lift animate-enter stagger-${idx + 1}`}
                 style={{
-                  backgroundColor: '#16181a',
-                  borderRadius: '20px',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  padding: '32px 28px',
+                  padding: 0,
+                  overflow: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.75rem',
-                  position: 'relative',
-                  overflow: 'hidden',
+                  backgroundColor: '#FFFFFF',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '16px',
                 }}
               >
-                {/* Step number watermark */}
-                <span style={{
-                  position: 'absolute',
-                  top: '-8px',
-                  right: '16px',
-                  fontSize: '5rem',
-                  fontWeight: 800,
-                  color: 'rgba(255,255,255,0.03)',
-                  lineHeight: 1,
-                  pointerEvents: 'none',
-                  userSelect: 'none',
-                }}>
-                  {step.num}
-                </span>
+                {/* Editorial Photo Frame */}
+                <div style={{ height: '180px', position: 'relative', overflow: 'hidden', backgroundColor: '#EFEAE1' }}>
+                  <img
+                    src={step.img}
+                    alt={step.alt}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      filter: 'contrast(1.02) brightness(0.96)',
+                      transition: 'transform 400ms var(--ease-out)',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '12px',
+                      left: '12px',
+                      backgroundColor: 'rgba(32, 26, 22, 0.88)',
+                      color: '#FAF7F2',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.25rem 0.6rem',
+                      borderRadius: '6px',
+                      backdropFilter: 'blur(4px)',
+                    }}
+                  >
+                    STEP {step.num}
+                  </div>
+                </div>
 
-                <span style={{ fontSize: '1.75rem' }}>{step.icon}</span>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#ffffff', lineHeight: 1.33, marginTop: '0.25rem' }}>
-                  {step.title}
-                </h3>
-                <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
-                  {step.desc}
-                </p>
+                {/* Content */}
+                <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                    {step.title}
+                  </h3>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                    {step.desc}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
+
         </div>
       </section>
 
-      {/* ── Key Capabilities ── */}
-      <section id="features" style={{ padding: '100px 2rem', backgroundColor: '#000000', borderTop: '1px solid rgba(255,255,255,0.08)', scrollMarginTop: '64px' }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
+      {/* ── Key Capabilities (Warm Sand Panel + Clean Editorial Cards) ── */}
+      <section id="features" style={{ padding: '100px 2rem', backgroundColor: '#FAF7F2', borderTop: '1px solid var(--border-light)', scrollMarginTop: '70px' }}>
+        <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '4rem' }}>
 
-          <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Engineered Capabilities
+            </span>
             <h2 style={{
               fontSize: 'clamp(32px, 4vw, 48px)',
               fontWeight: 500,
-              color: '#ffffff',
-              letterSpacing: '-0.48px',
+              color: 'var(--text-main)',
+              marginTop: '0.4rem',
               lineHeight: 1.15,
             }}>
-              Built for Real Operations
+              Designed for High-Density Operations
             </h2>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '1.05rem', marginTop: '1rem', lineHeight: 1.6 }}>
-              Every capability is purpose-built for fleet delivery — no generic dashboards or third-party black boxes.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', marginTop: '0.75rem', lineHeight: 1.6 }}>
+              Deterministic combinatorial optimization paired with Claude LLM intelligence to eliminate city delivery friction.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
             {[
               {
-                icon: '⚡',
-                title: 'Route Optimization',
-                desc: 'Custom-built Nearest Neighbor + 2-opt algorithm computes optimal multi-stop sequences — fully self-implemented, no third-party routing API.',
-                accentColor: '#494fdf',
+                icon: <Zap size={22} />,
+                title: 'Deterministic 2-Opt Optimizer',
+                highlight: 'Sub-15ms Client-Side Matrix',
+                desc: 'Computes Euclidean & Haversine distance matrices on the fly, systematically swapping intersecting route edges to deliver the shortest path without server-side compute bottlenecks.',
               },
               {
-                icon: '🗺️',
-                title: 'Live Fleet Tracking',
-                desc: 'Real-time vehicle positions rendered on an interactive map with color-coded status markers, route polylines, and driver detail inspectors.',
-                accentColor: '#00a87e',
+                icon: <Sparkles size={22} />,
+                title: 'Natural-Language AI Dispatches',
+                highlight: 'Claude API Integration',
+                desc: 'Translates GPS traffic telemetry, weather flags, and route diversions into empathetic, context-rich recipient notifications that reduce anxious customer inquiries.',
               },
               {
-                icon: '🔧',
-                title: 'Predictive Maintenance',
-                desc: 'Automated mileage-based monitoring triggers service alerts when vehicles approach maintenance thresholds — before breakdowns happen.',
-                accentColor: '#ec7e00',
+                icon: <MapPin size={22} />,
+                title: 'Real-Time Telemetry Map',
+                highlight: 'Animated Polyline & Live GPS',
+                desc: 'Simulates continuous vehicle coordinates along delivery routes with speedometers, battery/fuel monitoring, and dedicated customer tracking links.',
               },
               {
-                icon: '✨',
-                title: 'AI Delay Notifications',
-                desc: 'When deliveries hit traffic or weather delays, the Claude API generates specific, reassuring customer messages explaining the situation and revised ETA.',
-                accentColor: '#494fdf',
+                icon: <ShieldCheck size={22} />,
+                title: 'Predictive Fleet Health',
+                highlight: 'Automated Odometer Thresholds',
+                desc: 'Monitors vehicle mileage against 5,000 km service intervals, auto-generating workshop maintenance tickets before equipment failure disrupts delivery schedules.',
               },
-            ].map((item) => (
+            ].map((cap, idx) => (
               <div
-                key={item.title}
+                key={cap.title}
+                className={`card card-hover-lift animate-enter stagger-${idx + 1}`}
                 style={{
-                  backgroundColor: '#16181a',
-                  borderRadius: '20px',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  padding: '32px 28px',
+                  padding: '2.25rem 2rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.75rem',
-                  position: 'relative',
+                  gap: '1rem',
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: '16px',
+                  border: '1px solid var(--border-light)',
                 }}
               >
-                {/* Accent top bar */}
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: '28px',
-                  right: '28px',
-                  height: '2px',
-                  background: `linear-gradient(90deg, ${item.accentColor}, transparent)`,
-                  borderRadius: '0 0 2px 2px',
-                }} />
+                <div
+                  style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '12px',
+                    backgroundColor: 'var(--primary-tint)',
+                    color: 'var(--primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid var(--primary-border)',
+                  }}
+                >
+                  {cap.icon}
+                </div>
 
-                <span style={{ fontSize: '1.75rem', marginTop: '0.25rem' }}>{item.icon}</span>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#ffffff', lineHeight: 1.33, marginTop: '0.25rem' }}>
-                  {item.title}
-                </h3>
-                <p style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
-                  {item.desc}
+                <div>
+                  <h3 style={{ fontSize: '1.3rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                    {cap.title}
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 700, marginTop: '0.2rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {cap.highlight}
+                  </span>
+                </div>
+
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  {cap.desc}
                 </p>
               </div>
             ))}
           </div>
+
         </div>
       </section>
 
-      {/* ── Footer ── */}
-      <footer style={{
-        backgroundColor: '#0a0a0a',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
-        padding: '64px 2rem 0',
-        marginTop: 'auto',
-      }}>
-        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-
-          {/* Top row — brand + columns */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '3rem',
-            paddingBottom: '48px',
-          }}>
-
-            {/* Brand column */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <Link to="/" style={{ fontSize: '1.35rem', fontWeight: 700, color: '#ffffff', textDecoration: 'none', letterSpacing: '-0.02em' }}>
-                RouteWise
-              </Link>
-              <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6, maxWidth: '280px' }}>
-                Smart fleet dispatch and AI-powered delivery communication platform — built as an AI/ML Final Year Engineering Project.
+      {/* ── Editorial Footer (Light Warm Theme) ── */}
+      <footer style={{ backgroundColor: '#FAF7F2', color: 'var(--text-main)', borderTop: '1px solid var(--border-light)', padding: '72px 2rem 36px' }}>
+        <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '3.5rem' }}>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '2.5rem' }}>
+            
+            {/* Column 1: Brand */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                <div
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
+                    backgroundColor: 'var(--primary)',
+                    color: '#FAF7F2',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 800,
+                    fontSize: '0.8rem',
+                  }}
+                >
+                  RW
+                </div>
+                <span style={{ fontSize: '1.3rem', fontWeight: 600, color: 'var(--text-main)', fontFamily: 'var(--font-serif)' }}>
+                  RouteWise
+                </span>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '280px' }}>
+                Algorithmic fleet dispatch and AI-powered delay communication platform for modern logistics operations.
               </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <span className="live-pulse-dot" style={{ width: '6px', height: '6px', backgroundColor: 'var(--status-emerald-text)' }} />
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>All Telemetry Streams Active</span>
+              </div>
             </div>
 
-            {/* Quick Links */}
+            {/* Column 2: Navigation */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.25rem' }}>
-                Quick Links
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Application Views
               </span>
-              <Link to="/login" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Manager Console</Link>
-              <Link to="/track/ORD-8942" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Track an Order</Link>
-              <Link to="/driver/route" style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)', textDecoration: 'none' }}>Driver View</Link>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <Link to="/login" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>
+                  Dispatcher Command Center
+                </Link>
+                <Link to="/manager/map" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>
+                  Live Fleet Dispatch Map
+                </Link>
+                <Link to="/driver/route" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>
+                  Driver Route Console
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setIsTrackingModalOpen(true)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    textAlign: 'left',
+                    padding: 0,
+                    fontSize: '0.85rem',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-main)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
+                >
+                  Customer Live Tracking
+                </button>
+              </div>
             </div>
 
-            {/* Tech Stack */}
+            {/* Column 3: Tech Stack */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.25rem' }}>
-                Tech Stack
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Architecture & Stack
               </span>
-              <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>React + TypeScript</span>
-              <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>Leaflet / OpenStreetMap</span>
-              <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>Claude API (Anthropic)</span>
-              <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>Custom 2-Opt Engine</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <span>React 19 + TypeScript + Vite</span>
+                <span>react-globe.gl 3D WebGL Engine</span>
+                <span>Claude 3.5 Sonnet / Haiku API</span>
+                <span>Leaflet + OpenStreetMap</span>
+                <span>Client-Side 2-Opt Heuristic</span>
+              </div>
             </div>
 
-            {/* Project Info */}
+            {/* Column 4: Academic Context */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.25rem' }}>
-                Project
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Project Overview
               </span>
-              <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>Final Year B.Tech</span>
-              <span style={{ fontSize: '0.875rem', color: 'rgba(255,255,255,0.6)' }}>AI/ML Domain</span>
-              <span style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                fontSize: '0.875rem',
-                color: 'rgba(255,255,255,0.6)',
-              }}>
-                <span style={{ color: '#494fdf' }}>●</span> Academic Project
-              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                <span>AI/ML Final Year Capstone</span>
+                <span>Deterministic + LLM Hybrid</span>
+                <span>Client-Side Haversine Matrix</span>
+                <span style={{ color: 'var(--status-emerald-text)', fontWeight: 700 }}>Sub-15ms Heuristic Latency</span>
+              </div>
             </div>
+
           </div>
 
-          {/* Bottom bar */}
           <div style={{
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            padding: '1.5rem 0',
+            borderTop: '1px solid var(--border-light)',
+            paddingTop: '24px',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: '0.75rem',
+            gap: '1rem',
+            fontSize: '0.8rem',
+            color: 'var(--text-muted)',
           }}>
-            <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)' }}>
-              © {new Date().getFullYear()} RouteWise — Built for academic demonstration purposes.
-            </span>
-            <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)' }}>
-              Designed & Developed with ❤️
-            </span>
+            <span>&copy; {new Date().getFullYear()} RouteWise. Final Year Engineering Project.</span>
+            <span>All operational systems active.</span>
           </div>
+
         </div>
       </footer>
 
+      {/* Customer Tracking Modal */}
+      <CustomerTrackingModal
+        isOpen={isTrackingModalOpen}
+        onClose={() => setIsTrackingModalOpen(false)}
+      />
     </div>
   );
 };

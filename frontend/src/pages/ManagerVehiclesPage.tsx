@@ -1,401 +1,897 @@
 import React, { useState } from 'react';
 import { ManagerLayout } from '../components/ManagerLayout';
 import { Link } from 'react-router-dom';
+import {
+  Search,
+  Plus,
+  BatteryCharging,
+  Zap,
+  Route,
+  Wrench,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Truck,
+  X,
+} from 'lucide-react';
 
-interface Vehicle {
+export type VehicleStatus = 'active' | 'standby' | 'delayed' | 'maintenance';
+
+export interface VehicleAsset {
   id: string;
   plateNo: string;
-  type: string;
-  capacityKg: number;
-  status: 'available' | 'on_route' | 'maintenance';
-  mileageKm: number;
-  lastServiceDate: string;
+  model: string;
+  type: 'EV Van' | 'Diesel Mini Truck' | 'EV Scooter' | 'Cargo Van';
   driverName: string;
-  currentRouteId?: string;
-  maintenanceHistory: { date: string; type: string; cost: string }[];
+  driverPhone: string;
+  status: VehicleStatus;
+  currentZone: string;
+  capacityKg: number;
+  odometerKm: number;
+  lastServiceKm: number;
+  serviceIntervalKm: number;
+  batteryHealthPercent: number;
+  currentOrderId?: string;
+  currentSpeed?: string;
 }
 
-const dummyVehicles: Vehicle[] = [
+export interface MaintenanceRecord {
+  id: string;
+  vehiclePlate: string;
+  serviceType: string;
+  serviceDate: string;
+  odometerKm: number;
+  status: 'completed' | 'in_progress' | 'scheduled';
+  costRupees: number;
+  technician: string;
+  notes: string;
+}
+
+const dummyVehiclesList: VehicleAsset[] = [
   {
-    id: 'V101',
+    id: 'VH-101',
     plateNo: 'KA-01-EA-1024',
-    type: 'Medium Van (Tata Ace)',
-    capacityKg: 850,
-    status: 'on_route',
-    mileageKm: 14250,
-    lastServiceDate: '2026-07-10',
+    model: 'Tata Ace Gold EV',
+    type: 'EV Van',
     driverName: 'Rahul Sharma',
-    currentRouteId: 'V101',
-    maintenanceHistory: [
-      { date: '2026-07-10', type: 'Oil Change & Brake Inspection', cost: '₹3,200' },
-      { date: '2026-04-15', type: 'Tire Alignment & Rotation', cost: '₹1,800' },
-    ],
-  },
-  {
-    id: 'V102',
-    plateNo: 'KA-01-GB-5091',
-    type: 'Heavy Cargo Van (Mahindra Bolero Pickup)',
-    capacityKg: 1200,
-    status: 'on_route',
-    mileageKm: 28100,
-    lastServiceDate: '2026-06-20',
-    driverName: 'Priya Nair',
-    currentRouteId: 'V102',
-    maintenanceHistory: [
-      { date: '2026-06-20', type: '25,000 km Major Service', cost: '₹8,500' },
-      { date: '2026-02-11', type: 'Battery Replacement', cost: '₹4,500' },
-    ],
-  },
-  {
-    id: 'V103',
-    plateNo: 'KA-05-MC-8812',
-    type: 'EV Delivery Van (Tata Nexon EV Max)',
+    driverPhone: '+91 98450 11223',
+    status: 'active',
+    currentZone: 'Indiranagar Central Hub',
     capacityKg: 650,
-    status: 'available',
-    mileageKm: 9840,
-    lastServiceDate: '2026-08-01',
+    odometerKm: 14250,
+    lastServiceKm: 10000,
+    serviceIntervalKm: 5000,
+    batteryHealthPercent: 92,
+    currentOrderId: 'ORD-8945',
+    currentSpeed: '38 km/h',
+  },
+  {
+    id: 'VH-102',
+    plateNo: 'KA-01-GB-5091',
+    model: 'Mahindra Bolero Maxi Truck',
+    type: 'Diesel Mini Truck',
+    driverName: 'Priya Nair',
+    driverPhone: '+91 99011 44556',
+    status: 'delayed',
+    currentZone: 'HSR Layout Sector 2',
+    capacityKg: 1200,
+    odometerKm: 28100,
+    lastServiceKm: 25000,
+    serviceIntervalKm: 5000,
+    batteryHealthPercent: 88,
+    currentOrderId: 'ORD-8942',
+    currentSpeed: '12 km/h',
+  },
+  {
+    id: 'VH-103',
+    plateNo: 'KA-05-MC-8812',
+    model: 'Euler Motors HiLoad EV',
+    type: 'EV Van',
     driverName: 'Amit Patel',
-    maintenanceHistory: [
-      { date: '2026-08-01', type: 'EV Battery Diagnostic & Coolant Topup', cost: '₹1,200' },
-    ],
+    driverPhone: '+91 97400 88990',
+    status: 'active',
+    currentZone: 'Jayanagar Logistics Depot',
+    capacityKg: 688,
+    odometerKm: 9840,
+    lastServiceKm: 5000,
+    serviceIntervalKm: 5000,
+    batteryHealthPercent: 98,
+    currentOrderId: 'ORD-8938',
+    currentSpeed: '42 km/h',
   },
   {
-    id: 'V104',
+    id: 'VH-104',
     plateNo: 'KA-03-HA-3301',
-    type: 'Mini Van (Maruti Eeco Cargo)',
-    capacityKg: 500,
-    status: 'available',
-    mileageKm: 31500,
-    lastServiceDate: '2026-05-18',
+    model: 'Maruti Suzuki Eeco Cargo',
+    type: 'Cargo Van',
     driverName: 'Vikram Singh',
-    maintenanceHistory: [
-      { date: '2026-05-18', type: 'Clutch Cable Replacement', cost: '₹2,400' },
-      { date: '2026-01-05', type: 'Oil & Filter Change', cost: '₹2,900' },
-    ],
+    driverPhone: '+91 98800 22331',
+    status: 'standby',
+    currentZone: 'Malleshwaram Central Store',
+    capacityKg: 500,
+    odometerKm: 31500,
+    lastServiceKm: 30000,
+    serviceIntervalKm: 5000,
+    batteryHealthPercent: 85,
+    currentOrderId: 'Standby / Available',
   },
   {
-    id: 'V105',
+    id: 'VH-105',
     plateNo: 'KA-04-MH-9920',
-    type: 'Heavy Truck (Eicher Pro 2049)',
-    capacityKg: 2500,
-    status: 'maintenance',
-    mileageKm: 45200,
-    lastServiceDate: '2026-04-02',
+    model: 'Eicher Pro 2049 Light Truck',
+    type: 'Diesel Mini Truck',
     driverName: 'Suresh Kumar',
-    maintenanceHistory: [
-      { date: '2026-08-12', type: 'Auto-Triggered Mileage Service (45k km)', cost: 'Pending' },
-      { date: '2026-04-02', type: 'Suspension Repair', cost: '₹12,000' },
-    ],
+    driverPhone: '+91 99887 66554',
+    status: 'maintenance',
+    currentZone: 'Rajajinagar Service Workshop',
+    capacityKg: 2400,
+    odometerKm: 45200,
+    lastServiceKm: 40000,
+    serviceIntervalKm: 5000,
+    batteryHealthPercent: 78,
+    currentOrderId: 'In Workshop (Bay #2)',
   },
   {
-    id: 'V106',
+    id: 'VH-106',
     plateNo: 'KA-02-JL-4411',
-    type: 'EV Delivery Scooter (Ather 450X Cargo)',
-    capacityKg: 120,
-    status: 'available',
-    mileageKm: 4800,
-    lastServiceDate: '2026-07-25',
+    model: 'Ather 450X Commercial EV',
+    type: 'EV Scooter',
     driverName: 'Deepak Kumar',
-    maintenanceHistory: [
-      { date: '2026-07-25', type: 'Brake Pad Replacement', cost: '₹950' },
-    ],
-  },
-  {
-    id: 'V107',
-    plateNo: 'KA-51-AB-9012',
-    type: 'Medium Van (Tata Ace EV)',
-    capacityKg: 800,
-    status: 'on_route',
-    mileageKm: 16400,
-    lastServiceDate: '2026-06-30',
-    driverName: 'Rajesh Sharma',
-    currentRouteId: 'V107',
-    maintenanceHistory: [
-      { date: '2026-06-30', type: 'Standard 15k Inspection', cost: '₹2,100' },
-    ],
-  },
-  {
-    id: 'V108',
-    plateNo: 'KA-01-CD-7733',
-    type: 'Heavy Cargo Van (Ashok Leyland Dost)',
-    capacityKg: 1500,
-    status: 'available',
-    mileageKm: 22900,
-    lastServiceDate: '2026-07-15',
-    driverName: 'Manoj Gowda',
-    maintenanceHistory: [
-      { date: '2026-07-15', type: 'Engine Tuning & Air Filter Change', cost: '₹3,500' },
-    ],
+    driverPhone: '+91 98112 44556',
+    status: 'standby',
+    currentZone: 'Yeshwanthpur EV Station',
+    capacityKg: 40,
+    odometerKm: 4800,
+    lastServiceKm: 0,
+    serviceIntervalKm: 5000,
+    batteryHealthPercent: 99,
+    currentOrderId: 'Standby / Quick Dispatch',
   },
 ];
 
-const renderStatusBadge = (status: Vehicle['status']) => {
-  const styles = {
-    available: { bg: '#d1fae5', color: '#065f46', border: '#a7f3d0', label: '🟢 Available' },
-    on_route: { bg: '#e0f2fe', color: '#0369a1', border: '#bae6fd', label: '🚚 On Route' },
-    maintenance: { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: '🔧 Maintenance' },
-  };
-  const config = styles[status];
-  return (
-    <span
-      style={{
-        backgroundColor: config.bg,
-        color: config.color,
-        border: `1px solid ${config.border}`,
-        padding: '0.2rem 0.6rem',
-        borderRadius: '12px',
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        display: 'inline-flex',
-        alignItems: 'center',
-      }}
-    >
-      {config.label}
-    </span>
-  );
-};
+const dummyMaintenanceHistory: MaintenanceRecord[] = [
+  {
+    id: 'MNT-101',
+    vehiclePlate: 'KA-04-MH-9920',
+    serviceType: 'Brake Pad Replacement & Hydraulic Line Flush',
+    serviceDate: 'Today, 10:00 AM',
+    odometerKm: 45200,
+    status: 'in_progress',
+    costRupees: 6800,
+    technician: 'Metro Fleet Workshop (Bay #2)',
+    notes: 'Triggered by 45,000 km threshold. Replacement OEM parts installed.',
+  },
+  {
+    id: 'MNT-102',
+    vehiclePlate: 'KA-01-GB-5091',
+    serviceType: '5,000 km Routine Engine Oil & Filter Change',
+    serviceDate: 'Aug 04, 2026',
+    odometerKm: 25000,
+    status: 'completed',
+    costRupees: 3200,
+    technician: 'HSR Auto Works',
+    notes: 'Synthetic oil renewed. Tire pressure calibrated to 36 PSI.',
+  },
+  {
+    id: 'MNT-103',
+    vehiclePlate: 'KA-01-EA-1024',
+    serviceType: 'EV Battery Diagnostic & Coolant Level Check',
+    serviceDate: 'Jul 28, 2026',
+    odometerKm: 10000,
+    status: 'completed',
+    costRupees: 1800,
+    technician: 'Tata Motors EV Service',
+    notes: 'Battery cell balance 99.4%. Firmware updated to v2.4.',
+  },
+  {
+    id: 'MNT-104',
+    vehiclePlate: 'KA-03-HA-3301',
+    serviceType: 'Tire Rotation & Suspension Bushing Inspection',
+    serviceDate: 'Scheduled: Aug 18, 2026',
+    odometerKm: 31500,
+    status: 'scheduled',
+    costRupees: 2400,
+    technician: 'Malleshwaram Hub Service Bay',
+    notes: 'Pre-monsoon preventive inspection.',
+  },
+];
 
 export const ManagerVehiclesPage: React.FC = () => {
-  const [vehicles] = useState<Vehicle[]>(dummyVehicles);
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ plateNo: '', type: 'Medium Van', capacityKg: '' });
+  const [activeTab, setActiveTab] = useState<'fleet' | 'maintenance'>('fleet');
+  const [vehicles, setVehicles] = useState<VehicleAsset[]>(dummyVehiclesList);
+  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>(dummyMaintenanceHistory);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isAddVehicleOpen, setIsAddVehicleOpen] = useState(false);
+  const [isAddServiceOpen, setIsAddServiceOpen] = useState(false);
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  // New vehicle form
+  const [newVehicle, setNewVehicle] = useState({
+    plateNo: 'KA-05-AB-7744',
+    model: 'Tata Ace EV',
+    type: 'EV Van' as const,
+    driverName: 'Rohan Gupta',
+    driverPhone: '+91 98765 00112',
+    currentZone: 'Whitefield Tech Corridor',
+    capacityKg: 700,
+  });
+
+  // New maintenance form
+  const [newService, setNewService] = useState({
+    vehiclePlate: 'KA-01-EA-1024',
+    serviceType: 'General Health & Brake Inspection',
+    technician: 'Indiranagar Hub Bay #1',
+    costRupees: 2500,
+    notes: 'Regular checkup prior to weekend peak volume',
+  });
+
+  const handleCreateVehicle = (e: React.FormEvent) => {
     e.preventDefault();
-    alert(`Vehicle Added!\nPlate: ${formData.plateNo}\nType: ${formData.type}\nCapacity: ${formData.capacityKg} kg`);
-    setIsAddModalOpen(false);
-    setFormData({ plateNo: '', type: 'Medium Van', capacityKg: '' });
+    const created: VehicleAsset = {
+      id: `VH-${100 + vehicles.length + 1}`,
+      plateNo: newVehicle.plateNo,
+      model: newVehicle.model,
+      type: newVehicle.type,
+      driverName: newVehicle.driverName,
+      driverPhone: newVehicle.driverPhone,
+      status: 'standby',
+      currentZone: newVehicle.currentZone,
+      capacityKg: Number(newVehicle.capacityKg),
+      odometerKm: 1200,
+      lastServiceKm: 0,
+      serviceIntervalKm: 5000,
+      batteryHealthPercent: 100,
+      currentOrderId: 'Standby / Available',
+    };
+    setVehicles([created, ...vehicles]);
+    setIsAddVehicleOpen(false);
   };
+
+  const handleCreateService = (e: React.FormEvent) => {
+    e.preventDefault();
+    const created: MaintenanceRecord = {
+      id: `MNT-${100 + maintenanceRecords.length + 1}`,
+      vehiclePlate: newService.vehiclePlate,
+      serviceType: newService.serviceType,
+      serviceDate: 'Today, Just Now',
+      odometerKm: 14500,
+      status: 'in_progress',
+      costRupees: Number(newService.costRupees),
+      technician: newService.technician,
+      notes: newService.notes,
+    };
+    setMaintenanceRecords([created, ...maintenanceRecords]);
+    setIsAddServiceOpen(false);
+  };
+
+  const filteredVehicles = vehicles.filter((v) => {
+    const matchesQuery =
+      v.plateNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.driverName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.model.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      v.currentZone.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
+    return matchesQuery && matchesStatus;
+  });
 
   return (
     <ManagerLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
         
-        {/* Header */}
+        {/* ── Page Header & Tabs ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)' }}>Fleet Vehicles</h1>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              Manage fleet assets, mileage tracking, payload capacity & service records.
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              Fleet & Maintenance
+            </h1>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+              Real-time vehicle telemetry, driver assignments, and preventive service logs.
             </p>
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {activeTab === 'fleet' ? (
+              <button
+                type="button"
+                onClick={() => setIsAddVehicleOpen(true)}
+                className="btn btn-primary"
+                style={{ fontSize: '0.85rem' }}
+              >
+                <Plus size={16} />
+                <span>Add Vehicle</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsAddServiceOpen(true)}
+                className="btn btn-primary"
+                style={{ fontSize: '0.85rem' }}
+              >
+                <Plus size={16} />
+                <span>Log Service</span>
+              </button>
+            )}
+
+            <Link
+              to="/manager/map"
+              className="btn btn-secondary"
+              style={{ fontSize: '0.85rem' }}
+            >
+              <Route size={15} style={{ color: 'var(--primary)' }} />
+              <span>Live Map</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* ── Sub-Tab Switcher ── */}
+        <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
           <button
-            onClick={() => setIsAddModalOpen(true)}
-            style={{
-              backgroundColor: 'var(--accent-blue)',
-              color: '#ffffff',
-              padding: '0.65rem 1.25rem',
-              borderRadius: '8px',
-              border: 'none',
-              fontWeight: 600,
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-            }}
+            type="button"
+            onClick={() => setActiveTab('fleet')}
+            className={`tab-pill ${activeTab === 'fleet' ? 'active' : ''}`}
+            style={{ fontSize: '0.85rem', padding: '0.45rem 1.15rem' }}
           >
-            + Add Vehicle
+            <Truck size={16} />
+            <span>Active Fleet Roster ({vehicles.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('maintenance')}
+            className={`tab-pill ${activeTab === 'maintenance' ? 'active' : ''}`}
+            style={{ fontSize: '0.85rem', padding: '0.45rem 1.15rem' }}
+          >
+            <Wrench size={16} />
+            <span>Maintenance & Service Bay ({maintenanceRecords.length})</span>
           </button>
         </div>
 
-        {/* Vehicles Table */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  <th style={{ padding: '0.85rem 1.25rem' }}>PLATE NO</th>
-                  <th style={{ padding: '0.85rem 1.25rem' }}>VEHICLE TYPE</th>
-                  <th style={{ padding: '0.85rem 1.25rem' }}>CAPACITY (KG)</th>
-                  <th style={{ padding: '0.85rem 1.25rem' }}>STATUS</th>
-                  <th style={{ padding: '0.85rem 1.25rem' }}>DRIVER</th>
-                  <th style={{ padding: '0.85rem 1.25rem' }}>CURRENT MILEAGE</th>
-                  <th style={{ padding: '0.85rem 1.25rem' }}>LAST SERVICE</th>
-                  <th style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>ACTION</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vehicles.map((v) => (
-                  <tr
-                    key={v.id}
-                    onClick={() => setSelectedVehicle(v)}
-                    style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer', transition: 'background-color 0.15s ease' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                  >
-                    <td style={{ padding: '0.85rem 1.25rem', fontWeight: 700, color: 'var(--primary-blue)' }}>{v.plateNo}</td>
-                    <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-main)' }}>{v.type}</td>
-                    <td style={{ padding: '0.85rem 1.25rem', fontWeight: 600 }}>{v.capacityKg} kg</td>
-                    <td style={{ padding: '0.85rem 1.25rem' }}>{renderStatusBadge(v.status)}</td>
-                    <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-main)' }}>{v.driverName}</td>
-                    <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{v.mileageKm.toLocaleString()} km</td>
-                    <td style={{ padding: '0.85rem 1.25rem', color: 'var(--text-muted)' }}>{v.lastServiceDate}</td>
-                    <td style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>
-                      <span style={{ color: 'var(--accent-blue)', fontWeight: 600, fontSize: '0.8rem' }}>Inspect &rarr;</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {/* ══ TAB 1: ACTIVE FLEET ROSTER ══ */}
+        {activeTab === 'fleet' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            
+            {/* Filter & Search Bar */}
+            <div
+              className="card"
+              style={{
+                padding: '1rem 1.25rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '1rem',
+                backgroundColor: '#FFFFFF',
+              }}
+            >
+              <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+                <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search vehicle plate, driver name, model or zone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="input-clean"
+                  style={{ paddingLeft: '2.3rem', fontSize: '0.825rem' }}
+                />
+              </div>
 
-        {/* Selected Vehicle Drawer */}
-        {selectedVehicle && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className={`tab-pill ${statusFilter === 'all' ? 'active' : ''}`}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                >
+                  All ({vehicles.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('active')}
+                  className={`tab-pill ${statusFilter === 'active' ? 'active' : ''}`}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                >
+                  En Route ({vehicles.filter((v) => v.status === 'active').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('standby')}
+                  className={`tab-pill ${statusFilter === 'standby' ? 'active' : ''}`}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                >
+                  Standby ({vehicles.filter((v) => v.status === 'standby').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('maintenance')}
+                  className={`tab-pill ${statusFilter === 'maintenance' ? 'active' : ''}`}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
+                >
+                  In Bay ({vehicles.filter((v) => v.status === 'maintenance').length})
+                </button>
+              </div>
+            </div>
+
+            {/* Vehicle Grid Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+              {filteredVehicles.map((vehicle) => (
+                <div
+                  key={vehicle.id}
+                  className="card card-hover-lift animate-enter"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    padding: '1.35rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1rem',
+                    borderRadius: '16px',
+                  }}
+                >
+                  {/* Top Bar: Plate, Type, Status */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className="font-mono" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                          {vehicle.plateNo}
+                        </span>
+                        {vehicle.type.includes('EV') && (
+                          <span className="status-badge badge-olive" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }}>
+                            <Zap size={10} /> EV
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                        {vehicle.model}
+                      </div>
+                    </div>
+
+                    <div>
+                      {vehicle.status === 'active' ? (
+                        <span className="status-badge badge-olive" style={{ fontSize: '0.72rem' }}>
+                          <span className="live-pulse-dot" /> En Route
+                        </span>
+                      ) : vehicle.status === 'delayed' ? (
+                        <span className="status-badge badge-amber" style={{ fontSize: '0.72rem' }}>
+                          <AlertTriangle size={11} /> Delayed
+                        </span>
+                      ) : vehicle.status === 'maintenance' ? (
+                        <span className="status-badge badge-rose" style={{ fontSize: '0.72rem' }}>
+                          <Wrench size={11} /> In Service
+                        </span>
+                      ) : (
+                        <span className="status-badge badge-slate" style={{ fontSize: '0.72rem' }}>
+                          Standby
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Driver & Zone Info */}
+                  <div style={{ padding: '0.75rem', borderRadius: '10px', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Assigned Driver:</span>
+                      <strong style={{ color: 'var(--text-main)' }}>{vehicle.driverName}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Current Location:</span>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{vehicle.currentZone}</span>
+                    </div>
+                  </div>
+
+                  {/* Battery & Service Threshold */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <BatteryCharging size={13} /> Battery / System Health
+                      </span>
+                      <strong style={{ color: vehicle.batteryHealthPercent > 85 ? 'var(--status-emerald-text)' : 'var(--status-amber-text)' }}>
+                        {vehicle.batteryHealthPercent}%
+                      </strong>
+                    </div>
+                    <div style={{ width: '100%', height: '5px', backgroundColor: 'var(--border-light)', borderRadius: '9999px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${vehicle.batteryHealthPercent}%`,
+                          height: '100%',
+                          backgroundColor: vehicle.batteryHealthPercent > 85 ? '#1E5C32' : '#8E4C0E',
+                          borderRadius: '9999px',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Card Bottom CTA */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                      Odo: <strong>{vehicle.odometerKm.toLocaleString()} km</strong>
+                    </div>
+
+                    <Link
+                      to={`/manager/routes/${vehicle.id}`}
+                      style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--primary)',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      <span>Inspect Route &rarr;</span>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          </div>
+        )}
+
+        {/* ══ TAB 2: MAINTENANCE & SERVICE BAY ══ */}
+        {activeTab === 'maintenance' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            
+            {/* Maintenance Alert Notice */}
+            <div
+              className="card"
+              style={{
+                backgroundColor: 'var(--status-amber-bg)',
+                border: '1px solid var(--status-amber-border)',
+                padding: '1.25rem 1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderRadius: '14px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '50%', backgroundColor: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--status-amber-text)' }}>
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--status-amber-text)', margin: 0 }}>
+                    1 Vehicle Reached 45,000 km Odometer Threshold
+                  </h4>
+                  <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', margin: '0.15rem 0 0' }}>
+                    Vehicle <strong>KA-04-MH-9920</strong> is currently undergoing scheduled OEM brake pad overhaul at Bay #2.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddServiceOpen(true)}
+                className="btn btn-secondary"
+                style={{ fontSize: '0.8rem' }}
+              >
+                Log Service Update
+              </button>
+            </div>
+
+            {/* Maintenance History Table */}
+            <div className="card" style={{ padding: '1.5rem', backgroundColor: '#FFFFFF' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                  Service & Repair History
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {maintenanceRecords.length} records logged
+                </span>
+              </div>
+
+              <div style={{ overflowX: 'auto', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
+                <table className="clean-table">
+                  <thead>
+                    <tr>
+                      <th>Record ID</th>
+                      <th>Vehicle Plate</th>
+                      <th>Service Details</th>
+                      <th>Technician / Bay</th>
+                      <th>Cost (INR)</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {maintenanceRecords.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <span className="font-mono" style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                            {item.id}
+                          </span>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {item.serviceDate}
+                          </div>
+                        </td>
+                        <td>
+                          <span className="font-mono" style={{ fontWeight: 800, color: 'var(--text-main)' }}>
+                            {item.vehiclePlate}
+                          </span>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {item.odometerKm.toLocaleString()} km
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                            {item.serviceType}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {item.notes}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            {item.technician}
+                          </div>
+                        </td>
+                        <td>
+                          <span className="font-mono" style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                            ₹{item.costRupees.toLocaleString()}
+                          </span>
+                        </td>
+                        <td>
+                          {item.status === 'in_progress' ? (
+                            <span className="status-badge badge-amber" style={{ fontSize: '0.72rem' }}>
+                              <Clock size={11} /> In Progress
+                            </span>
+                          ) : item.status === 'completed' ? (
+                            <span className="status-badge badge-emerald" style={{ fontSize: '0.72rem' }}>
+                              <CheckCircle2 size={11} /> Completed
+                            </span>
+                          ) : (
+                            <span className="status-badge badge-slate" style={{ fontSize: '0.72rem' }}>
+                              Scheduled
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ── Add Vehicle Modal ── */}
+        {isAddVehicleOpen && (
           <div
             style={{
               position: 'fixed',
-              top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(15, 23, 42, 0.5)',
-              zIndex: 200,
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(28, 23, 19, 0.45)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 100,
               display: 'flex',
-              justifyContent: 'flex-end',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.5rem',
             }}
           >
             <div
+              className="card modal-pop-in"
               style={{
-                width: '450px',
-                backgroundColor: '#ffffff',
-                height: '100%',
+                width: '100%',
+                maxWidth: '480px',
+                backgroundColor: '#FFFFFF',
+                borderRadius: '18px',
                 padding: '2rem',
-                overflowY: 'auto',
-                boxShadow: '-4px 0 15px rgba(0,0,0,0.1)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1.5rem',
+                boxShadow: 'var(--shadow-xl)',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Vehicle Profile
-                  </span>
-                  <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary-navy)' }}>
-                    {selectedVehicle.plateNo}
-                  </h2>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                  Register New Vehicle
+                </h3>
                 <button
-                  onClick={() => setSelectedVehicle(null)}
-                  style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer' }}
+                  type="button"
+                  onClick={() => setIsAddVehicleOpen(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
                 >
-                  ✕
+                  <X size={20} />
                 </button>
               </div>
 
-              <div>{renderStatusBadge(selectedVehicle.status)}</div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.875rem' }}>
+              <form onSubmit={handleCreateVehicle} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ASSIGNED DRIVER</span>
-                  <div><strong>{selectedVehicle.driverName}</strong></div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>License Plate Number</label>
+                  <input
+                    type="text"
+                    required
+                    value={newVehicle.plateNo}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, plateNo: e.target.value })}
+                    className="input-clean"
+                    style={{ marginTop: '0.3rem' }}
+                  />
                 </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Vehicle Model</label>
+                    <input
+                      type="text"
+                      required
+                      value={newVehicle.model}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, model: e.target.value })}
+                      className="input-clean"
+                      style={{ marginTop: '0.3rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Payload Capacity (kg)</label>
+                    <input
+                      type="number"
+                      required
+                      value={newVehicle.capacityKg}
+                      onChange={(e) => setNewVehicle({ ...newVehicle, capacityKg: Number(e.target.value) })}
+                      className="input-clean"
+                      style={{ marginTop: '0.3rem' }}
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>SPECIFICATION & CAPACITY</span>
-                  <div>{selectedVehicle.type} • <strong>{selectedVehicle.capacityKg} kg</strong></div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Assigned Driver Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newVehicle.driverName}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, driverName: e.target.value })}
+                    className="input-clean"
+                    style={{ marginTop: '0.3rem' }}
+                  />
                 </div>
+
                 <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>TOTAL ODOMETER MILEAGE</span>
-                  <div>{selectedVehicle.mileageKm.toLocaleString()} km</div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Initial Staging Zone</label>
+                  <input
+                    type="text"
+                    required
+                    value={newVehicle.currentZone}
+                    onChange={(e) => setNewVehicle({ ...newVehicle, currentZone: e.target.value })}
+                    className="input-clean"
+                    style={{ marginTop: '0.3rem' }}
+                  />
                 </div>
-              </div>
 
-              {/* Active Route Summary Link */}
-              <div style={{ padding: '1rem', backgroundColor: '#f0f9ff', borderRadius: '8px', border: '1px solid #bae6fd' }}>
-                <h4 style={{ fontSize: '0.9rem', color: '#0369a1', marginBottom: '0.25rem' }}>Active Route Summary</h4>
-                <p style={{ fontSize: '0.8rem', color: '#0c4a6e', marginBottom: '0.75rem' }}>
-                  {selectedVehicle.status === 'on_route'
-                    ? 'Currently executing multi-stop delivery sequence in Bengaluru East zone.'
-                    : 'Vehicle is currently idle or available at main depot.'}
-                </p>
-                <Link
-                  to={`/manager/routes/${selectedVehicle.id}`}
-                  style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-blue)', textDecoration: 'none' }}
-                >
-                  Inspect Full Route Sequence &rarr;
-                </Link>
-              </div>
-
-              {/* Maintenance History */}
-              <div>
-                <h4 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.85rem', color: 'var(--text-main)' }}>
-                  Maintenance & Service History
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {selectedVehicle.maintenanceHistory.map((m, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        padding: '0.75rem',
-                        borderRadius: '6px',
-                        backgroundColor: '#f8fafc',
-                        border: '1px solid var(--border-color)',
-                        fontSize: '0.8rem',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-                        <span>{m.type}</span>
-                        <span style={{ color: 'var(--primary-blue)' }}>{m.cost}</span>
-                      </div>
-                      <div style={{ color: 'var(--text-muted)', marginTop: '0.2rem' }}>Service Date: {m.date}</div>
-                    </div>
-                  ))}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddVehicleOpen(false)}
+                    className="btn btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    Register Vehicle
+                  </button>
                 </div>
-              </div>
-
+              </form>
             </div>
           </div>
         )}
 
-        {/* Add Vehicle Modal */}
-        {isAddModalOpen && (
+        {/* ── Add Maintenance Service Modal ── */}
+        {isAddServiceOpen && (
           <div
             style={{
-              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              backgroundColor: 'rgba(15, 23, 42, 0.5)', zIndex: 200,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(28, 23, 19, 0.45)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.5rem',
             }}
           >
-            <div className="card" style={{ width: '450px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Register New Fleet Vehicle</h3>
-                <button onClick={() => setIsAddModalOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+            <div
+              className="card modal-pop-in"
+              style={{
+                width: '100%',
+                maxWidth: '480px',
+                backgroundColor: '#FFFFFF',
+                borderRadius: '18px',
+                padding: '2rem',
+                boxShadow: 'var(--shadow-xl)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                  Log Maintenance Service
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsAddServiceOpen(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                >
+                  <X size={20} />
+                </button>
               </div>
 
-              <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <form onSubmit={handleCreateService} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>License Plate No</label>
-                  <input
-                    type="text" required placeholder="e.g. KA-01-XX-9999"
-                    value={formData.plateNo} onChange={(e) => setFormData({ ...formData, plateNo: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.875rem' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>Vehicle Type / Specification</label>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Select Vehicle</label>
                   <select
-                    value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.875rem' }}
+                    value={newService.vehiclePlate}
+                    onChange={(e) => setNewService({ ...newService, vehiclePlate: e.target.value })}
+                    className="input-clean"
+                    style={{ marginTop: '0.3rem' }}
                   >
-                    <option value="Medium Van (Tata Ace)">Medium Van (Tata Ace)</option>
-                    <option value="Heavy Cargo Van (Bolero)">Heavy Cargo Van (Bolero)</option>
-                    <option value="EV Delivery Van (Nexon EV)">EV Delivery Van (Nexon EV)</option>
-                    <option value="Heavy Truck (Eicher)">Heavy Truck (Eicher)</option>
-                    <option value="EV Scooter">EV Scooter</option>
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.plateNo}>
+                        {v.plateNo} ({v.model} - {v.driverName})
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>Max Payload Capacity (kg)</label>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Service Task Type</label>
                   <input
-                    type="number" required placeholder="e.g. 1000"
-                    value={formData.capacityKg} onChange={(e) => setFormData({ ...formData, capacityKg: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.875rem' }}
+                    type="text"
+                    required
+                    value={newService.serviceType}
+                    onChange={(e) => setNewService({ ...newService, serviceType: e.target.value })}
+                    className="input-clean"
+                    style={{ marginTop: '0.3rem' }}
                   />
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-                  <button type="button" onClick={() => setIsAddModalOpen(false)} style={{ padding: '0.55rem 1rem', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: '#fff', cursor: 'pointer' }}>Cancel</button>
-                  <button type="submit" style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', backgroundColor: 'var(--accent-blue)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Register Vehicle</button>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Technician / Workshop</label>
+                    <input
+                      type="text"
+                      required
+                      value={newService.technician}
+                      onChange={(e) => setNewService({ ...newService, technician: e.target.value })}
+                      className="input-clean"
+                      style={{ marginTop: '0.3rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Est. Cost (INR)</label>
+                    <input
+                      type="number"
+                      required
+                      value={newService.costRupees}
+                      onChange={(e) => setNewService({ ...newService, costRupees: Number(e.target.value) })}
+                      className="input-clean"
+                      style={{ marginTop: '0.3rem' }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Diagnostic Notes</label>
+                  <input
+                    type="text"
+                    value={newService.notes}
+                    onChange={(e) => setNewService({ ...newService, notes: e.target.value })}
+                    className="input-clean"
+                    style={{ marginTop: '0.3rem' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddServiceOpen(false)}
+                    className="btn btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    Record Service
+                  </button>
                 </div>
               </form>
             </div>

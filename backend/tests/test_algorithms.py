@@ -308,3 +308,204 @@ def test_deterministic_output():
         assert subsequent_result["total_km"] == first_result["total_km"]
         assert subsequent_result["nearest_neighbor_km"] == first_result["nearest_neighbor_km"]
         assert subsequent_result["improvement_percent"] == first_result["improvement_percent"]
+
+
+# =============================================================================
+# 6. Distance Provider & Road Network Distance Tests (Mocked OSRM)
+# =============================================================================
+
+import json
+from unittest.mock import MagicMock, patch
+from urllib.error import URLError
+
+from app.services.distance_provider import (
+    clear_cache,
+    get_distance_matrix,
+    get_last_osrm_error,
+)
+
+
+def _mock_osrm_http_response(body_dict: dict, status: int = 200):
+    """Helper to create a mocked urllib.request.urlopen context manager."""
+    mock_resp = MagicMock()
+    mock_resp.status = status
+    mock_resp.read.return_value = json.dumps(body_dict).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+    return mock_resp
+
+
+def test_distance_provider_parsing_metres_to_km():
+    """Verify OSRM response parses metres to km and respects lng,lat query order."""
+    clear_cache()
+    points = [
+        (30.6425, 76.8173),  # Zirakpur Depot
+        (30.7410, 76.7790),  # Chandigarh Sector 17
+        (30.7025, 76.7164),  # Mohali Phase 7
+    ]
+    mock_payload = {
+        "code": "Ok",
+        "distances": [
+            [0.0, 15400.0, 18200.0],
+            [15100.0, 0.0, 7500.0],
+            [17900.0, 7600.0, 0.0],
+        ],
+    }
+
+    with patch("urllib.request.urlopen", return_value=_mock_osrm_http_response(mock_payload)) as mock_urlopen:
+        matrix, source = get_distance_matrix(points, mode="road")
+
+        # Verify network called
+        mock_urlopen.assert_called_once()
+        # Verify request URL format has lng,lat order
+        req = mock_urlopen.call_args[0][0]
+        url = req.full_url
+        assert "76.8173,30.6425;76.779,30.741;76.7164,30.7025" in url
+
+        # Verify source and conversions (metres -> km)
+        assert source == "osrm"
+        assert matrix[0][0] == 0.0
+        assert matrix[0][1] == 15.4  # 15400m -> 15.4 km
+        assert matrix[0][2] == 18.2  # 18200m -> 18.2 km
+        assert matrix[1][0] == 15.1  # 15100m -> 15.1 km
+        assert matrix[1][2] == 7.5   # 7500m -> 7.5 km
+
+
+def test_distance_provider_fallback_on_network_failure():
+    """When OSRM call raises network/timeout error, gracefully fallback to Haversine."""
+    clear_cache()
+    points = [
+        (30.6425, 76.8173),
+        (30.7410, 76.7790),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=URLError("DNS resolution failed")):
+        matrix, source = get_distance_matrix(points, mode="road")
+
+        assert source == "haversine_fallback"
+        expected_haversine = build_distance_matrix(points)
+        assert matrix == expected_haversine
+        assert get_last_osrm_error() is not None
+        assert "URLError" in get_last_osrm_error()
+
+
+def test_distance_provider_fallback_on_http_error():
+    """When OSRM returns HTTP 500 error code, gracefully fallback to Haversine."""
+    clear_cache()
+    points = [(30.6425, 76.8173), (30.7410, 76.7790)]
+    mock_payload = {"code": "InternalError", "message": "Service unavailable"}
+
+    with patch("urllib.request.urlopen", return_value=_mock_osrm_http_response(mock_payload, status=500)):
+        matrix, source = get_distance_matrix(points, mode="road")
+        assert source == "haversine_fallback"
+        assert matrix == build_distance_matrix(points)
+
+
+def test_distance_provider_fallback_on_null_entries():
+    """When OSRM response has null entries (unreachable road), fallback to Haversine."""
+    clear_cache()
+    points = [
+        (30.6425, 76.8173),
+        (30.7410, 76.7790),
+    ]
+    mock_payload = {
+        "code": "Ok",
+        "distances": [
+            [0.0, None],
+            [None, 0.0],
+        ],
+    }
+
+    with patch("urllib.request.urlopen", return_value=_mock_osrm_http_response(mock_payload)):
+        matrix, source = get_distance_matrix(points, mode="road")
+
+        assert source == "haversine_fallback"
+        assert matrix == build_distance_matrix(points)
+        assert "null" in get_last_osrm_error()
+
+
+def test_distance_provider_cache_hit():
+    """Identical or rounded coordinates hit the in-memory cache without repeating HTTP calls."""
+    clear_cache()
+    points = [
+        (30.6425001, 76.8173002),
+        (30.7410003, 76.7790004),
+    ]
+    mock_payload = {
+        "code": "Ok",
+        "distances": [
+            [0.0, 12000.0],
+            [12000.0, 0.0],
+        ],
+    }
+
+    with patch("urllib.request.urlopen", return_value=_mock_osrm_http_response(mock_payload)) as mock_urlopen:
+        # First call: cache miss, triggers HTTP call
+        mat1, src1 = get_distance_matrix(points, mode="road")
+        assert mock_urlopen.call_count == 1
+        assert src1 == "osrm"
+
+        # Second call with exact same points: cache hit, zero HTTP calls
+        mat2, src2 = get_distance_matrix(points, mode="road")
+        assert mock_urlopen.call_count == 1
+        assert src2 == "osrm"
+        assert mat1 == mat2
+
+        # Third call with coordinates differing only past 5th decimal place:
+        # (30.6425009 rounds to 30.64250) -> cache hit!
+        sub_micron_points = [
+            (30.6425009, 76.8173009),
+            (30.7410009, 76.7790009),
+        ]
+        mat3, src3 = get_distance_matrix(sub_micron_points, mode="road")
+        assert mock_urlopen.call_count == 1
+        assert src3 == "osrm"
+        assert mat3 == mat1
+
+
+def test_asymmetric_matrix_handled_by_optimizer():
+    """Asymmetric road matrices are symmetrized for 2-opt search, with directed total reported."""
+    # 4 stops: Depot (0), Stop A (1), Stop B (2), Stop C (3)
+    # Define an asymmetric directed road distance matrix
+    asymmetric_matrix = [
+        [0.0, 5.0, 15.0, 25.0],   # From 0
+        [12.0, 0.0, 6.0, 18.0],   # From 1 (notice 1->0 is 12, while 0->1 is 5)
+        [18.0, 14.0, 0.0, 7.0],   # From 2 (notice 2->1 is 14, while 1->2 is 6)
+        [8.0, 22.0, 16.0, 0.0],   # From 3 (notice 3->0 is 8, while 0->3 is 25)
+    ]
+    dummy_points = [(30.0, 76.0), (30.1, 76.1), (30.2, 76.2), (30.3, 76.3)]
+
+    result = optimize_route(
+        dummy_points,
+        return_to_depot=True,
+        matrix=asymmetric_matrix,
+        distance_source="osrm",
+    )
+
+    # Verify source is passed through
+    assert result["distance_source"] == "osrm"
+
+    # Verify all stops are visited starting from 0
+    order = result["order"]
+    assert order[0] == 0
+    assert sorted(order) == [0, 1, 2, 3]
+
+    # Verify that total_km strictly equals the directed sum along the order
+    full_tour = order + [0]
+    expected_directed_km = sum(asymmetric_matrix[full_tour[i]][full_tour[i + 1]] for i in range(len(order)))
+    assert pytest.approx(result["total_km"], abs=0.01) == round(expected_directed_km, 2)
+
+    # Verify nearest_neighbor_km is also evaluated with true directed distance
+    assert result["nearest_neighbor_km"] > 0.0
+    assert result["total_km"] <= result["nearest_neighbor_km"]
+
+
+def test_haversine_mode_explicit():
+    """Explicit mode='haversine' returns great-circle matrix with source='haversine'."""
+    points = [
+        (30.6425, 76.8173),
+        (30.7410, 76.7790),
+    ]
+    matrix, source = get_distance_matrix(points, mode="haversine")
+    assert source == "haversine"
+    assert matrix == build_distance_matrix(points)
+

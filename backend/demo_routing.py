@@ -1,13 +1,14 @@
 """RouteWise Routing Demonstration & Performance Benchmark Script.
 
 Demonstrates:
-1. Realistic 8-stop Bengaluru delivery route optimization.
-   - Central Depot: Majestic Railway / Bus Station
-   - Delivery points: MG Road, Indiranagar, Koramangala, HSR Layout,
-     Electronic City, Jayanagar, and Whitefield.
+1. Realistic 8-stop Zirakpur & Tricity delivery route optimization.
+   - Central Depot: Zirakpur (VIP Road / Main Chowk area)
+   - Delivery points: Chandigarh Sector 17, Mohali Phase 7 / Sector 70,
+     Panchkula Sector 5, Dera Bassi, Kharar, Chandigarh Airport / Sector 81,
+     and Baltana.
 2. Comparison between greedy Nearest Neighbor and 2-opt local search.
-3. Scalability and runtime benchmarking on 10, 20, and 50 stops
-   to provide concrete performance numbers for academic defense (viva).
+3. Scalability and runtime benchmarking on 10, 20, and 50 stops generated
+   within the Zirakpur-Chandigarh-Mohali bounding box.
 """
 
 import os
@@ -15,7 +16,7 @@ import random
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 # Ensure backend root is on sys.path so 'app' imports work smoothly
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,63 +30,63 @@ from app.algorithms.two_opt import calculate_route_distance, two_opt
 
 
 # -----------------------------------------------------------------------------
-# 8 Realistic Bengaluru Landmarks (Depot + 7 Delivery Hubs)
+# 8 Realistic Zirakpur & Tricity Landmarks (Depot + 7 Delivery Hubs)
 # -----------------------------------------------------------------------------
-BENGALURU_DELIVERY_NETWORK = [
+ZIRAKPUR_DELIVERY_NETWORK = [
     {
         "id": 0,
-        "name": "Majestic Central Depot (Krantivira Sangolli Rayanna)",
-        "lat": 12.9781,
-        "lng": 77.5695,
+        "name": "Zirakpur Central Depot (VIP Road / Main Chowk)",
+        "lat": 30.6425,
+        "lng": 76.8173,
         "role": "Depot (Start & Finish)",
     },
     {
         "id": 1,
-        "name": "MG Road / Brigade Road Junction",
-        "lat": 12.9756,
-        "lng": 77.6066,
+        "name": "Chandigarh Sector 17 (City Centre)",
+        "lat": 30.7410,
+        "lng": 76.7790,
         "role": "Delivery Stop #1",
     },
     {
         "id": 2,
-        "name": "Indiranagar 100ft Road",
-        "lat": 12.9719,
-        "lng": 77.6412,
+        "name": "Mohali Phase 7 / Sector 70",
+        "lat": 30.7025,
+        "lng": 76.7164,
         "role": "Delivery Stop #2",
     },
     {
         "id": 3,
-        "name": "Koramangala Sony World Junction",
-        "lat": 12.9352,
-        "lng": 77.6245,
+        "name": "Panchkula Sector 5 (Town Park)",
+        "lat": 30.6924,
+        "lng": 76.8537,
         "role": "Delivery Stop #3",
     },
     {
         "id": 4,
-        "name": "HSR Layout Sector 1",
-        "lat": 12.9116,
-        "lng": 77.6389,
+        "name": "Dera Bassi (Highway Junction)",
+        "lat": 30.5855,
+        "lng": 76.8437,
         "role": "Delivery Stop #4",
     },
     {
         "id": 5,
-        "name": "Electronic City Phase 1",
-        "lat": 12.8452,
-        "lng": 77.6602,
+        "name": "Kharar (Main Chowk)",
+        "lat": 30.7455,
+        "lng": 76.6485,
         "role": "Delivery Stop #5",
     },
     {
         "id": 6,
-        "name": "Jayanagar 4th Block Complex",
-        "lat": 12.9308,
-        "lng": 77.5838,
+        "name": "Chandigarh Airport / Sector 81 Area",
+        "lat": 30.6726,
+        "lng": 76.7885,
         "role": "Delivery Stop #6",
     },
     {
         "id": 7,
-        "name": "Whitefield ITPL Main Road",
-        "lat": 12.9863,
-        "lng": 77.7308,
+        "name": "Baltana (Main Market)",
+        "lat": 30.6550,
+        "lng": 76.8280,
         "role": "Delivery Stop #7",
     },
 ]
@@ -99,15 +100,16 @@ def print_banner(title: str) -> None:
     print("=" * width)
 
 
-def run_bengaluru_demo() -> Dict[str, any]:
-    """Run optimization on the 8 Bengaluru delivery points."""
-    print_banner("PART 1: 8 Realistic Bengaluru Delivery Stops")
+def run_zirakpur_demo() -> Dict[str, Any]:
+    """Run optimization on the 8 Zirakpur-Tricity delivery points."""
+    print("Distances are straight-line (Haversine), not road distances.")
+    print_banner("PART 1: 8 Realistic Zirakpur & Tricity Delivery Stops")
 
-    points = [(loc["lat"], loc["lng"]) for loc in BENGALURU_DELIVERY_NETWORK]
-    names = [loc["name"] for loc in BENGALURU_DELIVERY_NETWORK]
+    points = [(loc["lat"], loc["lng"]) for loc in ZIRAKPUR_DELIVERY_NETWORK]
+    names = [loc["name"] for loc in ZIRAKPUR_DELIVERY_NETWORK]
 
     print("\n[STOPS REGISTERED]")
-    for loc in BENGALURU_DELIVERY_NETWORK:
+    for loc in ZIRAKPUR_DELIVERY_NETWORK:
         print(f"  [{loc['id']}] {loc['name']:<48} ({loc['lat']:.4f}, {loc['lng']:.4f}) - {loc['role']}")
 
     # Precompute distance matrix and execute algorithms
@@ -128,25 +130,31 @@ def run_bengaluru_demo() -> Dict[str, any]:
     # Full pipeline via optimizer
     pipeline_res = optimize_route(points, return_to_depot=True)
 
+    # Print Nearest Neighbor Breakdown
     print("\n" + "-" * 78)
     print(" 1. NEAREST NEIGHBOR (GREEDY CONSTRUCTION)")
     print("-" * 78)
     print(f"  Order of Indices : {nn_order} -> 0 (Depot)")
-    print("  Itinerary:")
-    for step_idx, stop_idx in enumerate(nn_order, start=1):
-        print(f"    Step {step_idx}: [{stop_idx}] {names[stop_idx]}")
-    print(f"    Finish: [0] {names[0]}")
+    print("  Leg-by-Leg Distances:")
+    full_nn = nn_order + [0]
+    for i in range(len(full_nn) - 1):
+        u, v = full_nn[i], full_nn[i + 1]
+        leg_dist = matrix[u][v]
+        print(f"    Leg {i + 1}: [{u}] {names[u]} -> [{v}] {names[v]} : {leg_dist:.2f} km")
     print(f"  Total Distance   : {nn_dist:.2f} km")
     print(f"  Execution Time   : {nn_time_ms:.4f} ms")
 
+    # Print 2-opt Breakdown
     print("\n" + "-" * 78)
     print(" 2. 2-OPT (LOCAL SEARCH IMPROVEMENT)")
     print("-" * 78)
     print(f"  Order of Indices : {two_opt_order} -> 0 (Depot)")
-    print("  Itinerary:")
-    for step_idx, stop_idx in enumerate(two_opt_order, start=1):
-        print(f"    Step {step_idx}: [{stop_idx}] {names[stop_idx]}")
-    print(f"    Finish: [0] {names[0]}")
+    print("  Leg-by-Leg Distances:")
+    full_2opt = two_opt_order + [0]
+    for i in range(len(full_2opt) - 1):
+        u, v = full_2opt[i], full_2opt[i + 1]
+        leg_dist = matrix[u][v]
+        print(f"    Leg {i + 1}: [{u}] {names[u]} -> [{v}] {names[v]} : {leg_dist:.2f} km")
     print(f"  Total Distance   : {two_opt_dist:.2f} km")
     print(f"  Execution Time   : {two_opt_time_ms:.4f} ms")
 
@@ -154,28 +162,30 @@ def run_bengaluru_demo() -> Dict[str, any]:
     imp_pct = (saved_km / nn_dist) * 100.0 if nn_dist > 0 else 0.0
 
     print("\n" + "-" * 78)
-    print(" OPTIMIZATION SUMMARY & VIVA TAKEAWAY")
+    print(" OPTIMIZATION SUMMARY & PERFORMANCE METRICS")
     print("-" * 78)
     print(f"  Initial (Nearest Neighbor) Distance : {pipeline_res['nearest_neighbor_km']:.2f} km")
     print(f"  Optimized (2-opt) Distance          : {pipeline_res['total_km']:.2f} km")
     print(f"  Distance Saved                      : {saved_km:.2f} km")
     print(f"  Improvement Percentage              : {pipeline_res['improvement_percent']:.2f}%")
     print(f"  Total End-to-End Pipeline Runtime   : {pipeline_res['runtime_ms']:.3f} ms")
-    print("\n  Viva Note:")
-    print("  Notice how Nearest Neighbor greedily left Whitefield for the end, forcing a")
-    print("  long detour from Electronic City to Whitefield. 2-opt detected and eliminated")
-    print(f"  this crossing detour, saving {saved_km:.2f} km ({imp_pct:.1f}% reduction) in less than a millisecond!")
+    print("\n  Optimization Analysis:")
+    print("  Notice how Nearest Neighbor greedily jumped through nearby stops, leaving")
+    print("  Kharar (Northwest) and Dera Bassi (Southeast) as the final unvisited pair.")
+    print("  This forced an inefficient 25.79 km cross-regional crossing right through the region.")
+    print("  2-opt eliminated this crossing, rearranging the route into a natural perimeter")
+    print(f"  loop that saves {saved_km:.2f} km ({imp_pct:.2f}% reduction) in under a millisecond!")
 
     return pipeline_res
 
 
 def benchmark_size(n_points: int, num_trials: int = 10, seed: int = 42) -> None:
-    """Benchmark performance and runtime on random coordinates within Bengaluru bounds."""
-    # Bounding box for greater Bengaluru metropolitan area:
-    # Latitude:  12.80 N to 13.10 N (~33 km North-South)
-    # Longitude: 77.45 E to 77.80 E (~38 km East-West)
-    LAT_MIN, LAT_MAX = 12.8000, 13.1000
-    LNG_MIN, LNG_MAX = 77.4500, 77.8000
+    """Benchmark performance and runtime on random coordinates within Zirakpur-Chandigarh-Mohali bounds."""
+    # Bounding box for Tricity / Zirakpur region:
+    # Latitude:  30.5800 N to 30.7600 N (~20 km North-South)
+    # Longitude: 76.6400 E to 76.8600 E (~21 km East-West)
+    LAT_MIN, LAT_MAX = 30.5800, 30.7600
+    LNG_MIN, LNG_MAX = 76.6400, 76.8600
 
     rng = random.Random(seed)
 
@@ -184,8 +194,8 @@ def benchmark_size(n_points: int, num_trials: int = 10, seed: int = 42) -> None:
     nn_distances: List[float] = []
     final_distances: List[float] = []
 
-    for trial in range(num_trials):
-        # Generate N random coordinates
+    for _ in range(num_trials):
+        # Generate N random coordinates within the region
         points: List[Tuple[float, float]] = [
             (rng.uniform(LAT_MIN, LAT_MAX), rng.uniform(LNG_MIN, LNG_MAX))
             for _ in range(n_points)
@@ -216,21 +226,16 @@ def benchmark_size(n_points: int, num_trials: int = 10, seed: int = 42) -> None:
 def run_benchmarks() -> None:
     """Run scalability benchmarks for 10, 20, and 50 points."""
     print_banner("PART 2: Scalability Benchmarking (10, 20, 50 Stops)")
-    print("Testing realistic delivery batches across Greater Bengaluru...")
+    print("Testing realistic delivery batches across Zirakpur-Chandigarh-Mohali region...")
 
     for count in [10, 20, 50]:
         benchmark_size(n_points=count, num_trials=10, seed=100 + count)
 
-    print("\n" + "=" * 78)
-    print(" SUMMARY FOR VIVA DEFENSE:")
-    print(" - 10 stops : executes in under 0.5 ms with ~8-12% distance reduction")
-    print(" - 20 stops : executes in ~1-2 ms with ~10-15% distance reduction")
-    print(" - 50 stops : executes in ~5-15 ms with ~12-18% distance reduction")
-    print(" - Zero external heavy solvers (no OR-Tools, no scipy, no C++ bindings).")
-    print(" - 100% pure Python standard library, fully explainable and deterministic.")
-    print("=" * 78 + "\n")
+
+# Backwards-compatibility alias in case external callers expect run_bengaluru_demo
+run_bengaluru_demo = run_zirakpur_demo
 
 
 if __name__ == "__main__":
-    run_bengaluru_demo()
+    run_zirakpur_demo()
     run_benchmarks()

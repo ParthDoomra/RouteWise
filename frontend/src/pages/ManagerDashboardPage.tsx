@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ManagerLayout } from '../components/ManagerLayout';
 import { MiniMapPreview } from '../components/MiniMapPreview';
 import { AnimatedCounter } from '../components/AnimatedCounter';
 import { Link } from 'react-router-dom';
-import { getGlobalOrders, type UnifiedOrder } from '../data/mockOrders';
+import { apiClient } from '../api/client';
+import axios from 'axios';
 import {
   Package,
-  TrendingUp,
   Truck,
   Wrench,
   Sparkles,
@@ -19,152 +19,132 @@ import {
   Copy,
   Check,
   Search,
+  RefreshCw,
 } from 'lucide-react';
 
-interface SummaryCardProps {
-  title: string;
-  count: number;
-  decimals?: number;
-  prefix?: string;
-  suffix?: string;
-  subtext: string;
-  trend?: string;
-  trendPositive?: boolean;
-  icon: React.ReactNode;
-  accentColor: string;
-  badgeBg: string;
-  staggerClass?: string;
+export interface DashboardOrder {
+  id: number;
+  order_code: string;
+  tracking_uuid: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  pickup_address: string | null;
+  drop_address: string | null;
+  weight_kg: number | null;
+  status: string;
+  delay_reason: string | null;
+  vehicle_id: number | null;
+  created_at: string | null;
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({
-  title,
-  count,
-  decimals = 0,
-  prefix = '',
-  suffix = '',
-  subtext,
-  trend,
-  trendPositive,
-  icon,
-  accentColor,
-  badgeBg,
-  staggerClass = '',
-}) => (
-  <div
-    className={`card card-hover-lift animate-enter ${staggerClass}`}
-    style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.75rem',
-      position: 'relative',
-      overflow: 'hidden',
-      backgroundColor: '#FFFFFF',
-      border: '1px solid var(--border-light)',
-      borderRadius: '16px',
-      padding: '1.35rem 1.5rem',
-    }}
-  >
-    {/* Subtle top indicator */}
-    <div
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: '3px',
-        background: accentColor,
-      }}
-    />
+export interface DashboardVehicle {
+  id: number;
+  plate_no: string;
+  model: string | null;
+  capacity_kg: number;
+  status: string;
+  current_lat: number | null;
+  current_lng: number | null;
+  mileage_km: number;
+}
 
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-        {title}
-      </span>
-      <div
-        style={{
-          width: '34px',
-          height: '34px',
-          borderRadius: '8px',
-          backgroundColor: badgeBg,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: accentColor,
-        }}
-      >
-        {icon}
-      </div>
-    </div>
+export interface DashboardMaintenanceTicket {
+  id: number;
+  vehicle_id: number;
+  trigger_type: string;
+  status: string;
+}
 
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
-      <AnimatedCounter
-        value={count}
-        decimals={decimals}
-        prefix={prefix}
-        suffix={suffix}
-        style={{
-          fontSize: '2rem',
-          fontWeight: 800,
-          color: 'var(--text-main)',
-          letterSpacing: '-0.03em',
-        }}
-      />
-      {trend && (
-        <span
-          style={{
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            color: trendPositive ? 'var(--status-emerald-text)' : 'var(--status-rose-text)',
-            backgroundColor: trendPositive ? 'var(--status-emerald-bg)' : 'var(--status-rose-bg)',
-            border: `1px solid ${trendPositive ? 'var(--status-emerald-border)' : 'var(--status-rose-border)'}`,
-            padding: '0.15rem 0.5rem',
-            borderRadius: '9999px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.2rem',
-          }}
-        >
-          <TrendingUp size={11} />
-          {trend}
-        </span>
-      )}
-    </div>
-
-    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-      {subtext}
-    </div>
-  </div>
-);
+export interface DashboardNotification {
+  id: number;
+  order_id: number | null;
+  message: string;
+  channel: string;
+  is_ai_generated: boolean;
+  sent_at: string | null;
+}
 
 export const ManagerDashboardPage: React.FC = () => {
-  const [orders] = useState<UnifiedOrder[]>(() => getGlobalOrders());
+  const [orders, setOrders] = useState<DashboardOrder[]>([]);
+  const [vehicles, setVehicles] = useState<DashboardVehicle[]>([]);
+  const [tickets, setTickets] = useState<DashboardMaintenanceTicket[]>([]);
+  const [notifications, setNotifications] = useState<DashboardNotification[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'in_transit' | 'delayed' | 'delivered'>('all');
 
-  const copyTrackingUrl = (uuid: string, orderId: string) => {
+  const fetchDashboardData = async () => {
+    setIsLoading(true);
+    setFetchError(null);
+    try {
+      const [oRes, vRes, mRes, nRes] = await Promise.all([
+        apiClient.get<DashboardOrder[]>('/orders'),
+        apiClient.get<DashboardVehicle[]>('/vehicles'),
+        apiClient.get<DashboardMaintenanceTicket[]>('/maintenance').catch(() => ({ data: [] as DashboardMaintenanceTicket[] })),
+        apiClient.get<DashboardNotification[]>('/notifications').catch(() => ({ data: [] as DashboardNotification[] })),
+      ]);
+      setOrders(oRes.data);
+      setVehicles(vRes.data);
+      setTickets(mRes.data);
+      setNotifications(nRes.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setFetchError(err.response?.data?.detail || err.message || 'Cannot reach server');
+      } else {
+        setFetchError('Failed to load dashboard data');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const copyTrackingUrl = (uuid: string, orderCode: string) => {
     const url = `${window.location.origin}/track/${uuid}`;
     navigator.clipboard.writeText(url);
-    setCopiedId(orderId);
+    setCopiedId(orderCode);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // KPI Calculations
+  const activeDeliveries = orders.filter((o) =>
+    ['assigned', 'picked_up', 'in_transit', 'delayed'].includes(o.status)
+  );
+  const onRouteCount = vehicles.filter((v) => v.status === 'on_route').length;
+  const availableVehiclesCount = vehicles.filter(
+    (v) => v.status === 'available' || v.status === 'standby'
+  ).length;
+  const inMaintenanceCount = vehicles.filter((v) => v.status === 'maintenance').length;
+  const openTicketsCount = tickets.filter((t) => t.status !== 'resolved').length;
+
   const filteredOrders = orders.filter((item) => {
     const matchesQuery =
-      item.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.zone.toLowerCase().includes(searchQuery.toLowerCase());
-    
+      item.order_code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.customer_name && item.customer_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (item.drop_address && item.drop_address.toLowerCase().includes(searchQuery.toLowerCase()));
+
     if (!matchesQuery) return false;
     if (statusFilter === 'all') return true;
-    if (statusFilter === 'delayed') return item.isDelayed;
-    if (statusFilter === 'in_transit') return item.status === 'in_transit' || item.status === 'picked_up';
+    if (statusFilter === 'delayed') return item.status === 'delayed' || Boolean(item.delay_reason);
+    if (statusFilter === 'in_transit') return item.status === 'in_transit' || item.status === 'picked_up' || item.status === 'assigned';
     if (statusFilter === 'delivered') return item.status === 'delivered';
     return true;
   });
 
-  // Top recent AI notifications for right sidebar feed
-  const aiDispatches = orders.filter((o) => o.isAiGenerated || o.isDelayed).slice(0, 5);
+  // Recent 5 notifications for right feed
+  const recentNotifications = notifications.slice(0, 5);
+
+  const getVehicleForOrder = (vehicleId: number | null): string => {
+    if (!vehicleId) return 'Unassigned';
+    const v = vehicles.find((veh) => veh.id === vehicleId);
+    return v ? v.plate_no : `Vehicle #${vehicleId}`;
+  };
 
   return (
     <ManagerLayout>
@@ -190,6 +170,16 @@ export const ManagerDashboardPage: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={fetchDashboardData}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.85rem' }}
+              title="Refresh Dashboard"
+            >
+              <RefreshCw size={15} className={isLoading ? 'spin-icon' : ''} />
+              <span>Refresh</span>
+            </button>
+
             <Link
               to="/manager/orders"
               className="btn btn-primary"
@@ -209,64 +199,189 @@ export const ManagerDashboardPage: React.FC = () => {
             </Link>
 
             <Link
-              to="/manager/analytics"
+              to="/manager/notifications"
               className="btn btn-secondary"
               style={{ fontSize: '0.85rem' }}
             >
               <Sparkles size={15} style={{ color: 'var(--accent-gold)' }} />
-              <span>AI Simulator</span>
+              <span>Notifications</span>
             </Link>
           </div>
         </div>
 
-        {/* ── 4 KPI Summary Cards ── */}
+        {/* ── Error Banner ── */}
+        {fetchError && (
+          <div
+            style={{
+              padding: '1rem 1.25rem',
+              backgroundColor: 'var(--status-rose-bg, #FFF1F2)',
+              border: '1px solid var(--status-rose-border, #FECDD3)',
+              borderRadius: '12px',
+              color: 'var(--status-rose-text, #9F1239)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <AlertTriangle size={18} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{fetchError}</span>
+            </div>
+            <button
+              onClick={fetchDashboardData}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* ── 4 KPI Summary Cards Computed From Real DB Lists ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.15rem' }}>
-          <SummaryCard
-            title="Couriers in Transit"
-            count={42}
-            subtext="34 active on route • 8 assigned"
-            trend="+8.2% today"
-            trendPositive={true}
-            icon={<Package size={17} />}
-            accentColor="var(--primary)"
-            badgeBg="var(--status-olive-bg)"
-            staggerClass="stagger-1"
-          />
+          
+          {/* Card 1: Active Deliveries */}
+          <div
+            className="card card-hover-lift animate-enter stagger-1"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              position: 'relative',
+              overflow: 'hidden',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid var(--border-light)',
+              borderRadius: '16px',
+              padding: '1.35rem 1.5rem',
+            }}
+          >
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'var(--primary)' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Active Deliveries
+              </span>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', backgroundColor: 'var(--status-olive-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                <Package size={17} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
+              <AnimatedCounter
+                value={activeDeliveries.length}
+                style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.03em' }}
+              />
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--status-emerald-text)', backgroundColor: 'var(--status-emerald-bg)', border: '1px solid var(--status-emerald-border)', padding: '0.15rem 0.5rem', borderRadius: '9999px' }}>
+                Live Manifest
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              {orders.filter((o) => o.status === 'in_transit').length} in transit • {orders.filter((o) => o.status === 'assigned').length} assigned
+            </div>
+          </div>
 
-          <SummaryCard
-            title="SLA Compliance"
-            count={94.2}
-            decimals={1}
-            suffix="%"
-            subtext="Target benchmark: 92.0%"
-            trend="+2.2% above SLA"
-            trendPositive={true}
-            icon={<CheckCircle2 size={17} />}
-            accentColor="#1E5C32"
-            badgeBg="var(--status-emerald-bg)"
-            staggerClass="stagger-2"
-          />
+          {/* Card 2: On-Time Percentage -> Specifically "No data yet" */}
+          <div
+            className="card card-hover-lift animate-enter stagger-2"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              position: 'relative',
+              overflow: 'hidden',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid var(--border-light)',
+              borderRadius: '16px',
+              padding: '1.35rem 1.5rem',
+            }}
+          >
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: '#1E5C32' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                On-Time Percentage
+              </span>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', backgroundColor: 'var(--status-emerald-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1E5C32' }}>
+                <CheckCircle2 size={17} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
+              <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>
+                No data yet
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              Benchmark calculation awaiting delivered orders
+            </div>
+          </div>
 
-          <SummaryCard
-            title="Fleet Availability"
-            count={14}
-            suffix=" / 18"
-            subtext="13 active • 1 scheduled check"
-            icon={<Truck size={17} />}
-            accentColor="var(--accent-gold)"
-            badgeBg="var(--status-amber-bg)"
-            staggerClass="stagger-3"
-          />
+          {/* Card 3: Fleet Availability (vehicles available out of total) */}
+          <div
+            className="card card-hover-lift animate-enter stagger-3"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              position: 'relative',
+              overflow: 'hidden',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid var(--border-light)',
+              borderRadius: '16px',
+              padding: '1.35rem 1.5rem',
+            }}
+          >
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'var(--accent-gold)' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Fleet Availability
+              </span>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', backgroundColor: 'var(--status-amber-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-gold)' }}>
+                <Truck size={17} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.03em' }}>
+                {availableVehiclesCount} <span style={{ fontSize: '1.2rem', color: 'var(--text-muted)', fontWeight: 600 }}>/ {vehicles.length}</span>
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              {onRouteCount} on route • {inMaintenanceCount} in maintenance
+            </div>
+          </div>
 
-          <SummaryCard
-            title="Maintenance Alerts"
-            count={2}
-            subtext="1 odometer threshold reached"
-            icon={<Wrench size={17} />}
-            accentColor="#8E4C0E"
-            badgeBg="var(--status-amber-bg)"
-            staggerClass="stagger-4"
-          />
+          {/* Card 4: Open Maintenance Tickets */}
+          <div
+            className="card card-hover-lift animate-enter stagger-4"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem',
+              position: 'relative',
+              overflow: 'hidden',
+              backgroundColor: '#FFFFFF',
+              border: '1px solid var(--border-light)',
+              borderRadius: '16px',
+              padding: '1.35rem 1.5rem',
+            }}
+          >
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: '#8E4C0E' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Maintenance Alerts
+              </span>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', backgroundColor: 'var(--status-amber-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8E4C0E' }}>
+                <Wrench size={17} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.65rem' }}>
+              <AnimatedCounter
+                value={openTicketsCount}
+                style={{ fontSize: '2rem', fontWeight: 800, color: openTicketsCount > 0 ? 'var(--status-rose-text)' : 'var(--text-main)', letterSpacing: '-0.03em' }}
+              />
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              {openTicketsCount > 0 ? `${openTicketsCount} open maintenance ticket${openTicketsCount > 1 ? 's' : ''}` : 'All fleet assets operational'}
+            </div>
+          </div>
+
         </div>
 
         {/* ── 2-Column Bento Grid Layout ── */}
@@ -298,7 +413,7 @@ export const ManagerDashboardPage: React.FC = () => {
                     Live Fleet Radar
                   </h3>
                   <span className="status-badge badge-olive" style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}>
-                    <span className="live-pulse-dot" /> 3 Vehicles Online
+                    <span className="live-pulse-dot" /> {vehicles.filter(v => v.current_lat && v.current_lng).length} Vehicles Located
                   </span>
                 </div>
 
@@ -321,7 +436,7 @@ export const ManagerDashboardPage: React.FC = () => {
 
               {/* Map Preview Container */}
               <div style={{ width: '100%', height: '280px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-light)' }}>
-                <MiniMapPreview />
+                <MiniMapPreview vehicles={vehicles} />
               </div>
 
               {/* Vehicle Speed Ticker */}
@@ -333,18 +448,23 @@ export const ManagerDashboardPage: React.FC = () => {
                   paddingTop: '0.5rem',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8rem' }}>
-                  <span className="font-mono" style={{ fontWeight: 800 }}>KA-01-EA-1024</span>
-                  <span className="status-badge badge-emerald" style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem' }}>38 km/h</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8rem' }}>
-                  <span className="font-mono" style={{ fontWeight: 800 }}>KA-01-GB-5091</span>
-                  <span className="status-badge badge-amber" style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem' }}>12 km/h</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8rem' }}>
-                  <span className="font-mono" style={{ fontWeight: 800 }}>KA-05-MC-8812</span>
-                  <span className="status-badge badge-olive" style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem' }}>42 km/h</span>
-                </div>
+                {vehicles.slice(0, 3).map((v) => (
+                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.8rem' }}>
+                    <span className="font-mono" style={{ fontWeight: 800 }}>{v.plate_no}</span>
+                    <span
+                      className={`status-badge ${
+                        v.status === 'on_route'
+                          ? 'badge-emerald'
+                          : v.status === 'maintenance'
+                          ? 'badge-rose'
+                          : 'badge-slate'
+                      }`}
+                      style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem' }}
+                    >
+                      {v.status === 'on_route' ? 'En Route' : v.status === 'maintenance' ? 'In Bay' : 'Available'}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -365,7 +485,7 @@ export const ManagerDashboardPage: React.FC = () => {
                     Active Deliveries & Manifest
                   </h3>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                    Showing {filteredOrders.length} dispatches in progress
+                    Showing {filteredOrders.length} dispatches in manifest
                   </p>
                 </div>
 
@@ -385,7 +505,7 @@ export const ManagerDashboardPage: React.FC = () => {
                     className={`tab-pill ${statusFilter === 'in_transit' ? 'active' : ''}`}
                     style={{ fontSize: '0.75rem', padding: '0.3rem 0.75rem' }}
                   >
-                    In Transit
+                    Active / Transit
                   </button>
                   <button
                     type="button"
@@ -403,7 +523,7 @@ export const ManagerDashboardPage: React.FC = () => {
                 <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
-                  placeholder="Filter by Order ID, customer name or delivery zone..."
+                  placeholder="Filter by Order Code, customer name or destination..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="input-clean"
@@ -417,116 +537,111 @@ export const ManagerDashboardPage: React.FC = () => {
                   <thead>
                     <tr>
                       <th>Order ID</th>
-                      <th>Customer & Zone</th>
+                      <th>Customer & Address</th>
                       <th>Assigned Vehicle</th>
                       <th>Status</th>
                       <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOrders.slice(0, 6).map((order) => (
-                      <tr key={order.id}>
-                        <td>
-                          <span className="font-mono" style={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                            {order.id}
-                          </span>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>
-                            {order.customerName}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {order.zone}
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            {order.assignedVehicle.split(' ')[0]}
-                          </div>
-                        </td>
-                        <td>
-                          {order.isDelayed ? (
-                            <span className="status-badge badge-amber" style={{ fontSize: '0.72rem' }}>
-                              <AlertTriangle size={11} /> Delay Active
-                            </span>
-                          ) : order.status === 'delivered' ? (
-                            <span className="status-badge badge-emerald" style={{ fontSize: '0.72rem' }}>
-                              ✓ Delivered
-                            </span>
-                          ) : (
-                            <span className="status-badge badge-olive" style={{ fontSize: '0.72rem' }}>
-                              <span className="live-pulse-dot" /> In Transit
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <button
-                              onClick={() => copyTrackingUrl(order.trackingUuid, order.id)}
-                              title="Copy Customer Tracking Link"
-                              style={{
-                                background: 'transparent',
-                                border: '1px solid var(--border-medium)',
-                                padding: '0.3rem 0.6rem',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.3rem',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: copiedId === order.id ? 'var(--status-emerald-text)' : 'var(--text-secondary)',
-                              }}
-                            >
-                              {copiedId === order.id ? <Check size={12} /> : <Copy size={12} />}
-                              <span>{copiedId === order.id ? 'Copied' : 'Track Link'}</span>
-                            </button>
+                    {filteredOrders.slice(0, 6).map((order) => {
+                      const vehPlate = getVehicleForOrder(order.vehicle_id);
 
-                            <Link
-                              to={`/track/${order.trackingUuid}`}
-                              title="Simulate Customer Tracking Experience"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '6px',
-                                backgroundColor: 'var(--bg-card-subtle)',
-                                color: 'var(--primary)',
-                                textDecoration: 'none',
-                                border: '1px solid var(--border-light)',
-                              }}
-                            >
-                              <ExternalLink size={13} />
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                      return (
+                        <tr key={order.id}>
+                          <td>
+                            <span className="font-mono" style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                              {order.order_code}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                              {order.customer_name || 'Customer'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                              {order.drop_address || 'Bengaluru Delivery'}
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              {vehPlate}
+                            </div>
+                          </td>
+                          <td>
+                            {order.status === 'delayed' || order.delay_reason ? (
+                              <span className="status-badge badge-amber" style={{ fontSize: '0.72rem' }}>
+                                <AlertTriangle size={11} /> Delay Active
+                              </span>
+                            ) : order.status === 'delivered' ? (
+                              <span className="status-badge badge-emerald" style={{ fontSize: '0.72rem' }}>
+                                ✓ Delivered
+                              </span>
+                            ) : order.status === 'in_transit' || order.status === 'assigned' ? (
+                              <span className="status-badge badge-olive" style={{ fontSize: '0.72rem' }}>
+                                <span className="live-pulse-dot" /> {order.status === 'in_transit' ? 'In Transit' : 'Assigned'}
+                              </span>
+                            ) : (
+                              <span className="status-badge badge-slate" style={{ fontSize: '0.72rem' }}>
+                                Pending
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <button
+                                onClick={() => copyTrackingUrl(order.tracking_uuid, order.order_code)}
+                                title="Copy Customer Tracking Link"
+                                style={{
+                                  background: 'transparent',
+                                  border: '1px solid var(--border-medium)',
+                                  padding: '0.3rem 0.6rem',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  color: copiedId === order.order_code ? 'var(--status-emerald-text)' : 'var(--text-secondary)',
+                                }}
+                              >
+                                {copiedId === order.order_code ? <Check size={12} /> : <Copy size={12} />}
+                                <span>{copiedId === order.order_code ? 'Copied' : 'Track Link'}</span>
+                              </button>
+
+                              <Link
+                                to={`/track/${order.tracking_uuid}`}
+                                target="_blank"
+                                title="Open Customer Tracking Link"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '6px',
+                                  backgroundColor: 'var(--bg-card-subtle)',
+                                  color: 'var(--primary)',
+                                  textDecoration: 'none',
+                                  border: '1px solid var(--border-light)',
+                                }}
+                              >
+                                <ExternalLink size={13} />
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.35rem' }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Total {orders.length} orders registered in system
-                </span>
-                <Link
-                  to="/manager/orders"
-                  style={{ fontSize: '0.825rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
-                >
-                  Manage All Orders &rarr;
-                </Link>
               </div>
             </div>
 
           </div>
 
-          {/* ══ RIGHT COLUMN: Live AI Communications Feed & Fleet Readiness ══ */}
+          {/* ══ RIGHT COLUMN: Recent Notifications Feed ══ */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', minWidth: 0 }}>
-
-            {/* AI Dispatches Stream */}
             <div
               className="card animate-enter stagger-3"
               style={{
@@ -538,164 +653,74 @@ export const ManagerDashboardPage: React.FC = () => {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                  <div
-                    style={{
-                      width: '30px',
-                      height: '30px',
-                      borderRadius: '8px',
-                      backgroundColor: 'var(--primary-tint)',
-                      color: 'var(--primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Sparkles size={16} />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
-                      AI Dispatches & Alerts
-                    </h3>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Automated Claude AI recipient updates
-                    </div>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Sparkles size={16} style={{ color: 'var(--accent-gold)' }} />
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                    Recent Notifications Feed
+                  </h3>
                 </div>
 
                 <Link
-                  to="/manager/analytics"
-                  style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
+                  to="/manager/notifications"
+                  style={{
+                    fontSize: '0.78rem',
+                    color: 'var(--primary)',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                  }}
                 >
-                  Simulator &rarr;
+                  All Logs &rarr;
                 </Link>
               </div>
 
-              {/* Feed Items */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                {aiDispatches.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      padding: '1rem',
-                      borderRadius: '12px',
-                      backgroundColor: item.isDelayed ? 'var(--status-amber-bg)' : 'var(--bg-surface)',
-                      border: item.isDelayed ? '1px solid var(--status-amber-border)' : '1px solid var(--border-light)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.5rem',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                        <span className="font-mono" style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                          {item.id}
+              {recentNotifications.length === 0 ? (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  No recent notifications recorded.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {recentNotifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      style={{
+                        padding: '0.95rem 1.15rem',
+                        backgroundColor: 'var(--bg-surface)',
+                        borderRadius: '12px',
+                        border: '1px solid var(--border-light)',
+                        borderLeft: notif.is_ai_generated ? '3px solid #C49746' : '3px solid var(--primary)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.4rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem' }}>
+                        <span className="font-mono" style={{ fontWeight: 800, color: 'var(--primary)' }}>
+                          {notif.order_id ? `Order #${notif.order_id}` : 'Broadcast'}
                         </span>
-                        {item.isDelayed ? (
-                          <span className="status-badge badge-amber" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }}>
-                            Traffic Delay
-                          </span>
-                        ) : (
-                          <span className="status-badge badge-olive" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }}>
-                            AI Update
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {notif.sent_at ? new Date(notif.sent_at).toLocaleTimeString() : 'Recent'}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-main)', lineHeight: 1.45, margin: 0 }}>
+                        {notif.message}
+                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        <span className="status-badge badge-slate" style={{ fontSize: '0.65rem', padding: '0.05rem 0.35rem' }}>
+                          {notif.channel}
+                        </span>
+                        {notif.is_ai_generated && (
+                          <span style={{ color: 'var(--accent-gold)', fontWeight: 700 }}>
+                            ✦ AI Generated
                           </span>
                         )}
                       </div>
-
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        {item.feedTime}
-                      </span>
                     </div>
-
-                    <p style={{ fontSize: '0.825rem', color: 'var(--text-main)', lineHeight: 1.5, margin: 0 }}>
-                      "{item.feedMessage}"
-                    </p>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.35rem', borderTop: '1px solid rgba(43, 36, 30, 0.06)' }}>
-                      <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                        To: <strong style={{ color: 'var(--text-main)' }}>{item.customerName}</strong>
-                      </span>
-
-                      <Link
-                        to={`/track/${item.trackingUuid}`}
-                        style={{ fontSize: '0.74rem', color: 'var(--primary)', fontWeight: 700, textDecoration: 'none' }}
-                      >
-                        Preview Track &rarr;
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
-
-            {/* Quick Fleet Health & Status Card */}
-            <div
-              className="card animate-enter stagger-4"
-              style={{
-                padding: '1.35rem 1.5rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1rem',
-                backgroundColor: '#FFFFFF',
-              }}
-            >
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Fleet Operations Health
-              </h3>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Fleet Deployment Rate</span>
-                    <strong style={{ color: 'var(--text-main)' }}>78% (14 / 18 Vehicles)</strong>
-                  </div>
-                  <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border-light)', borderRadius: '9999px', overflow: 'hidden' }}>
-                    <div style={{ width: '78%', height: '100%', backgroundColor: 'var(--primary)', borderRadius: '9999px' }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>EV Battery Fleet Health</span>
-                    <strong style={{ color: 'var(--status-emerald-text)' }}>94.6% Avg</strong>
-                  </div>
-                  <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border-light)', borderRadius: '9999px', overflow: 'hidden' }}>
-                    <div style={{ width: '94.6%', height: '100%', backgroundColor: '#1E5C32', borderRadius: '9999px' }} />
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>On-Time Dispatch Rate</span>
-                    <strong style={{ color: 'var(--text-main)' }}>96.1%</strong>
-                  </div>
-                  <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--border-light)', borderRadius: '9999px', overflow: 'hidden' }}>
-                    <div style={{ width: '96.1%', height: '100%', backgroundColor: 'var(--accent-gold)', borderRadius: '9999px' }} />
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.5rem' }}>
-                <Link
-                  to="/manager/vehicles"
-                  className="btn btn-secondary"
-                  style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.5rem' }}
-                >
-                  <Truck size={14} />
-                  <span>Fleet Roster</span>
-                </Link>
-
-                <Link
-                  to="/manager/analytics"
-                  className="btn btn-secondary"
-                  style={{ flex: 1, fontSize: '0.78rem', padding: '0.4rem 0.5rem' }}
-                >
-                  <span>SLA Audit</span>
-                </Link>
-              </div>
-            </div>
-
           </div>
+
         </div>
 
       </div>

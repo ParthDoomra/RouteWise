@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ManagerLayout } from '../components/ManagerLayout';
 import { AnimatedCounter } from '../components/AnimatedCounter';
-import { getGlobalOrders, getOrderByTrackingId } from '../data/mockOrders';
+import { apiClient } from '../api/client';
+import axios from 'axios';
 import {
   Sparkles,
   Copy,
@@ -10,135 +11,127 @@ import {
   ExternalLink,
   Code2,
   RefreshCw,
+  AlertTriangle,
+  Bell,
 } from 'lucide-react';
 
-interface NotificationLogItem {
-  id: string;
-  orderId: string;
-  trackingUuid: string;
+export interface BackendNotification {
+  id: number;
+  order_id: number | null;
   message: string;
-  channel: 'SMS' | 'Email' | 'WhatsApp';
-  isAiGenerated: boolean;
-  promptTokens?: number;
-  sentAt: string;
-  recipient: string;
+  channel: string;
+  is_ai_generated: boolean;
+  sent_at: string | null;
 }
 
-const initialNotificationLogs: NotificationLogItem[] = [
-  {
-    id: 'NOTIF-901',
-    orderId: 'ORD-8942',
-    trackingUuid: 'a3f8c1e2-9b44-4e21-8f3a-1c9d7b2e5f10',
-    message: 'Hello Siddharth, your RouteWise delivery ORD-8942 is experiencing a ~25 min delay due to heavy congestion along the HSR Outer Ring Road junction. Driver Priya Nair is en route and navigating the shortest alternate bypass path to reach you safely.',
-    channel: 'SMS',
-    isAiGenerated: true,
-    promptTokens: 142,
-    sentAt: 'Today, 14:15 PM',
-    recipient: '+91 99001 22334 (Siddharth Rao)',
-  },
-  {
-    id: 'NOTIF-902',
-    orderId: 'ORD-8945',
-    trackingUuid: 'e7b2c9f1-3a44-4d88-8e11-5f6a7b8c9d0e',
-    message: 'Your RouteWise order ORD-8945 has been picked up by Rahul Sharma! Track live: routewise.com/track/e7b2c9f1-3a44-4d88-8e11-5f6a7b8c9d0e — ETA: 2:20 PM',
-    channel: 'SMS',
-    isAiGenerated: false,
-    sentAt: 'Today, 13:40 PM',
-    recipient: '+91 98765 43210 (Aarav Sharma)',
-  },
-  {
-    id: 'NOTIF-903',
-    orderId: 'ORD-8931',
-    trackingUuid: 'f9e8d7c6-b5a4-4f3e-2d1c-0b9a8f7e6d5c',
-    message: 'Hello Ananya, severe monsoon showers in the Electronic City zone have slowed our delivery vehicle. Driver Vikram Singh is carefully navigating with revised ETA at 4:30 PM. Track live here.',
-    channel: 'WhatsApp',
-    isAiGenerated: true,
-    promptTokens: 168,
-    sentAt: 'Today, 12:30 PM',
-    recipient: '+91 98440 55112 (Ananya Deshmukh)',
-  },
-  {
-    id: 'NOTIF-904',
-    orderId: 'ORD-8938',
-    trackingUuid: 'c4d3b2a1-8e7f-4a5b-9c8d-1e2f3a4b5c6d',
-    message: 'Package loaded and confirmed: Order ORD-8938 picked up by Amit Patel (KA-05-MC-8812). Driver en route to Jayanagar 4th Block with on-time ETA 2:45 PM.',
-    channel: 'SMS',
-    isAiGenerated: false,
-    sentAt: 'Today, 13:25 PM',
-    recipient: '+91 97456 12389 (Rohan Gupta)',
-  },
-  {
-    id: 'NOTIF-905',
-    orderId: 'ORD-8940',
-    trackingUuid: 'd5e6f7a8-1b2c-3d4e-5f6a-7b8c9d0e1f2a',
-    message: 'Notice: Order ORD-8940 assigned to Deepak Kumar (KA-02-JL-4411) for evening delivery to JP Nagar with estimated ETA 5:30 PM.',
-    channel: 'SMS',
-    isAiGenerated: true,
-    promptTokens: 135,
-    sentAt: 'Today, 11:50 AM',
-    recipient: '+91 97312 99887 (Karan Verma)',
-  },
-];
+export interface BackendOrderSummary {
+  id: number;
+  order_code: string;
+  tracking_uuid: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  drop_address: string | null;
+}
 
 export const ManagerNotificationsPage: React.FC = () => {
-  const allOrders = getGlobalOrders();
-  const [logs, setLogs] = useState<NotificationLogItem[]>(initialNotificationLogs);
-  const [filterType, setFilterType] = useState<'all' | 'ai' | 'sms' | 'whatsapp'>('all');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<BackendNotification[]>([]);
+  const [orders, setOrders] = useState<BackendOrderSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [simOrderId, setSimOrderId] = useState('ORD-8942');
+  const [aiOnly, setAiOnly] = useState(false);
+  const [filterChannel, setFilterChannel] = useState<'all' | 'SMS' | 'WhatsApp' | 'Email'>('all');
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  // Playground simulation state
+  const [simOrderId, setSimOrderId] = useState<string>('');
   const [simDisruption, setSimDisruption] = useState('heavy_traffic');
   const [simEstimatedDelay, setSimEstimatedDelay] = useState('25 mins');
   const [isGenerating, setIsGenerating] = useState(false);
   const [simResult, setSimResult] = useState<string | null>(null);
 
-  const selectedOrderObj = getOrderByTrackingId(simOrderId);
+  const fetchData = async () => {
+    setIsLoading(true);
+    setFetchError(null);
+    try {
+      const [nRes, oRes] = await Promise.all([
+        apiClient.get<BackendNotification[]>('/notifications'),
+        apiClient.get<BackendOrderSummary[]>('/orders').catch(() => ({ data: [] as BackendOrderSummary[] })),
+      ]);
+      setNotifications(nRes.data);
+      setOrders(oRes.data);
+      if (oRes.data.length > 0 && !simOrderId) {
+        setSimOrderId(String(oRes.data[0].id));
+      }
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setFetchError(err.response?.data?.detail || err.message || 'Cannot reach server');
+      } else {
+        setFetchError('Failed to load notifications from server');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const getOrderInfo = (orderId: number | null) => {
+    if (!orderId) return null;
+    return orders.find((o) => o.id === orderId) || null;
+  };
+
+  const selectedOrderObj = orders.find((o) => String(o.id) === simOrderId) || orders[0] || null;
 
   const handleSimulateClaude = () => {
+    if (!selectedOrderObj) return;
     setIsGenerating(true);
     setSimResult(null);
 
     setTimeout(() => {
-      const order = getOrderByTrackingId(simOrderId);
       let generated = '';
+      const custName = selectedOrderObj.customer_name || 'Valued Customer';
+      const ordCode = selectedOrderObj.order_code;
+
       if (simDisruption === 'heavy_traffic') {
-        generated = `Hello ${order.customerName}, your delivery ${order.id} is experiencing a temporary ~${simEstimatedDelay} delay due to peak traffic congestion along the main junction. Driver ${order.driverName} is actively taking the fastest alternate bypass to reach you safely.`;
+        generated = `Hello ${custName}, your delivery ${ordCode} is experiencing a temporary ~${simEstimatedDelay} delay due to peak traffic congestion along the main junction. Driver is actively navigating the shortest alternate route to reach you safely.`;
       } else if (simDisruption === 'rain') {
-        generated = `Hello ${order.customerName}, heavy monsoon rainfall in your delivery sector has necessitated cautious driving. Your package ${order.id} will arrive in approximately ~${simEstimatedDelay}. Driver ${order.driverName} is navigating carefully.`;
+        generated = `Hello ${custName}, heavy monsoon rainfall in your delivery sector has necessitated cautious driving. Your package ${ordCode} will arrive in approximately ~${simEstimatedDelay}. Driver is en route with care.`;
       } else {
-        generated = `Hello ${order.customerName}, an unexpected road closure diversion added ~${simEstimatedDelay} to our vehicle route. Driver ${order.driverName} (${order.vehiclePlate}) is already rerouted and en route to your doorstep.`;
+        generated = `Hello ${custName}, an unexpected road closure diversion added ~${simEstimatedDelay} to our vehicle route. Delivery ${ordCode} has been rerouted and is currently en route to your doorstep.`;
       }
 
       setSimResult(generated);
       setIsGenerating(false);
 
-      const newLogItem: NotificationLogItem = {
-        id: `NOTIF-${Math.floor(910 + Math.random() * 80)}`,
-        orderId: order.id,
-        trackingUuid: order.trackingUuid,
+      // Prepend to notifications display
+      const simulatedNotif: BackendNotification = {
+        id: Date.now(),
+        order_id: selectedOrderObj.id,
         message: generated,
         channel: 'SMS',
-        isAiGenerated: true,
-        promptTokens: 154,
-        sentAt: 'Just now (Simulated)',
-        recipient: `${order.customerPhone} (${order.customerName})`,
+        is_ai_generated: true,
+        sent_at: new Date().toISOString(),
       };
-      setLogs([newLogItem, ...logs]);
-    }, 750);
+      setNotifications((prev) => [simulatedNotif, ...prev]);
+    }, 650);
   };
 
-  const handleCopyMessage = (text: string, id: string) => {
+  const handleCopyMessage = (text: string, id: number) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const filteredLogs = logs.filter((log) => {
-    if (filterType === 'ai') return log.isAiGenerated;
-    if (filterType === 'sms') return log.channel === 'SMS';
-    if (filterType === 'whatsapp') return log.channel === 'WhatsApp';
+  const filteredLogs = notifications.filter((log) => {
+    if (aiOnly && !log.is_ai_generated) return false;
+    if (filterChannel !== 'all' && log.channel.toLowerCase() !== filterChannel.toLowerCase()) return false;
     return true;
   });
+
+  const aiCount = notifications.filter((n) => n.is_ai_generated).length;
 
   return (
     <ManagerLayout>
@@ -162,31 +155,66 @@ export const ManagerNotificationsPage: React.FC = () => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
               <h1 style={{ fontSize: '1.65rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                AI Customer Dispatches & Logs
+                Notifications & AI Dispatches
               </h1>
               <span className="status-badge badge-olive">
-                <Sparkles size={12} /> Claude 3.5 Sonnet Connected
+                <Sparkles size={12} /> Live API Feed
               </span>
             </div>
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              Real-time audit trail of automated SMS, WhatsApp, and email notices dispatched during route disruptions.
+              Real-time audit trail of automated customer advisories dispatched across delivery channels.
             </p>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-            <span className="status-badge badge-slate" style={{ fontSize: '0.8rem' }}>
-              Avg Generation Latency: <strong>720ms</strong>
-            </span>
+            <button
+              onClick={fetchData}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.85rem' }}
+              title="Refresh notifications"
+            >
+              <RefreshCw size={15} className={isLoading ? 'spin-icon' : ''} />
+              <span>Refresh</span>
+            </button>
           </div>
         </div>
+
+        {/* ── Error Banner ── */}
+        {fetchError && (
+          <div
+            style={{
+              padding: '1rem 1.25rem',
+              backgroundColor: 'var(--status-rose-bg, #FFF1F2)',
+              border: '1px solid var(--status-rose-border, #FECDD3)',
+              borderRadius: '12px',
+              color: 'var(--status-rose-text, #9F1239)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <AlertTriangle size={18} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{fetchError}</span>
+            </div>
+            <button
+              onClick={fetchData}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* ── KPI Counter Cards ── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
           {[
-            { label: 'DISPATCHES TODAY', count: 184, sub: '99.4% Delivery Success Rate', accent: '#4A5D3A', bg: 'var(--status-olive-bg)' },
-            { label: 'CLAUDE AI NOTICES', count: 62, sub: 'Natural-language translations', accent: '#C49746', bg: 'var(--status-amber-bg)' },
-            { label: 'WISMO CALLS AVOIDED', count: 142, sub: '77% reduction in inquiries', accent: '#285433', bg: 'var(--status-emerald-bg)' },
-            { label: 'AVG CSAT SCORE', count: 4.8, decimals: 1, suffix: ' / 5.0', sub: 'Post-delivery feedback', accent: '#8E4C0E', bg: 'var(--status-amber-bg)' },
+            { label: 'TOTAL DISPATCHES', count: notifications.length, sub: 'Logged system alerts' },
+            { label: 'AI EXPLAINERS', count: aiCount, sub: 'Natural language summaries' },
+            { label: 'STANDARD NOTICES', count: notifications.length - aiCount, sub: 'Template dispatches' },
+            { label: 'DELIVERY ORDERS', count: orders.length, sub: 'Registered manifest orders' },
           ].map((kpi, idx) => (
             <div
               key={kpi.label}
@@ -198,8 +226,6 @@ export const ManagerNotificationsPage: React.FC = () => {
               </span>
               <AnimatedCounter
                 value={kpi.count}
-                decimals={kpi.decimals || 0}
-                suffix={kpi.suffix || ''}
                 style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-main)' }}
               />
               <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{kpi.sub}</span>
@@ -208,254 +234,321 @@ export const ManagerNotificationsPage: React.FC = () => {
         </div>
 
         {/* ── Interactive Claude AI Prompt Playground Simulator ── */}
-        <div
-          className="card card-hover-lift animate-enter stagger-2"
-          style={{
-            padding: '1.75rem',
-            backgroundColor: '#FFFFFF',
-            borderRadius: '18px',
-            border: '1px solid var(--border-light)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1.25rem',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {selectedOrderObj && (
+          <div
+            className="card card-hover-lift animate-enter stagger-2"
+            style={{
+              padding: '1.75rem',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '18px',
+              border: '1px solid var(--border-light)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--primary-tint)',
+                    color: 'var(--primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Code2 size={16} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                    Interactive AI Delay Message Generator
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Simulate dynamic Claude AI prompts translating telemetry events into empathetic recipient advisories.
+                  </p>
+                </div>
+              </div>
+
+              <span className="status-badge badge-olive" style={{ fontSize: '0.72rem' }}>
+                LLM Prompt: Structured Zero-Shot
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
+                  Select Delivery Order
+                </label>
+                <select
+                  value={simOrderId}
+                  onChange={(e) => setSimOrderId(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', backgroundColor: '#FFFFFF', color: 'var(--text-main)' }}
+                >
+                  {orders.map((o) => (
+                    <option key={o.id} value={String(o.id)}>
+                      {o.order_code} — {o.customer_name || 'Customer'} ({o.drop_address || 'Bengaluru'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
+                  Telemetry Disruption Reason
+                </label>
+                <select
+                  value={simDisruption}
+                  onChange={(e) => setSimDisruption(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', backgroundColor: '#FFFFFF', color: 'var(--text-main)' }}
+                >
+                  <option value="heavy_traffic">Peak Junction Traffic Congestion</option>
+                  <option value="rain">Monsoon Downpour & Reduced Speed</option>
+                  <option value="road_closure">Emergency Construction Diversion</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
+                  Estimated Delay Duration
+                </label>
+                <select
+                  value={simEstimatedDelay}
+                  onChange={(e) => setSimEstimatedDelay(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', backgroundColor: '#FFFFFF', color: 'var(--text-main)' }}
+                >
+                  <option value="15 mins">15 mins delay</option>
+                  <option value="25 mins">25 mins delay</option>
+                  <option value="40 mins">40 mins delay</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Target Recipient: <strong style={{ color: 'var(--text-main)' }}>{selectedOrderObj.customer_name}</strong> ({selectedOrderObj.customer_phone || 'Customer'})
+              </div>
+
+              <button
+                onClick={handleSimulateClaude}
+                disabled={isGenerating}
+                className="btn btn-primary"
+                style={{ fontSize: '0.85rem', padding: '0.55rem 1.35rem' }}
+              >
+                {isGenerating ? <RefreshCw size={15} className="spin-icon" /> : <Sparkles size={15} />}
+                <span>{isGenerating ? 'Generating with Claude API...' : 'Generate & Dispatch AI Notice'}</span>
+              </button>
+            </div>
+
+            {simResult && (
               <div
+                className="animate-enter"
                 style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  backgroundColor: 'var(--primary-tint)',
-                  color: 'var(--primary)',
+                  padding: '1.25rem',
+                  borderRadius: '12px',
+                  backgroundColor: 'var(--status-amber-bg)',
+                  border: '1px solid var(--status-amber-border)',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
                 }}
               >
-                <Code2 size={16} />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                  Interactive AI Delay Message Generator
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Simulate dynamic Claude AI prompts translating telemetry events into empathetic recipient advisories.
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--status-amber-text)', textTransform: 'uppercase' }}>
+                    Generated Claude Output (Logged to Notifications)
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Structured Prompt Dispatched</span>
+                </div>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.6, fontWeight: 500 }}>
+                  "{simResult}"
                 </p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  <Link
+                    to={`/track/${selectedOrderObj.tracking_uuid}`}
+                    target="_blank"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem', textDecoration: 'none' }}
+                  >
+                    <span>Open Live Recipient View for {selectedOrderObj.order_code}</span>
+                    <ExternalLink size={13} />
+                  </Link>
+                </div>
               </div>
-            </div>
-
-            <span className="status-badge badge-olive" style={{ fontSize: '0.72rem' }}>
-              LLM Prompt: Structured Zero-Shot
-            </span>
+            )}
           </div>
+        )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
-                Select Delivery Order
-              </label>
-              <select
-                value={simOrderId}
-                onChange={(e) => setSimOrderId(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', backgroundColor: '#FFFFFF', color: 'var(--text-main)' }}
-              >
-                {allOrders.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.id} — {o.customerName} ({o.zone})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
-                Telemetry Disruption Reason
-              </label>
-              <select
-                value={simDisruption}
-                onChange={(e) => setSimDisruption(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', backgroundColor: '#FFFFFF', color: 'var(--text-main)' }}
-              >
-                <option value="heavy_traffic">Peak Junction Traffic Congestion</option>
-                <option value="rain">Monsoon Downpour & Reduced Speed</option>
-                <option value="road_closure">Emergency Construction Diversion</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.35rem' }}>
-                Estimated Delay Duration
-              </label>
-              <select
-                value={simEstimatedDelay}
-                onChange={(e) => setSimEstimatedDelay(e.target.value)}
-                style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.85rem', backgroundColor: '#FFFFFF', color: 'var(--text-main)' }}
-              >
-                <option value="15 mins">15 mins delay</option>
-                <option value="25 mins">25 mins delay</option>
-                <option value="40 mins">40 mins delay</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Target Recipient: <strong style={{ color: 'var(--text-main)' }}>{selectedOrderObj.customerName}</strong> ({selectedOrderObj.customerPhone}) • Driver: <strong>{selectedOrderObj.driverName}</strong>
-            </div>
-
+        {/* ── Filter Bar with AI-Generated Toggle ── */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {/* AI Only Toggle Pill */}
             <button
-              onClick={handleSimulateClaude}
-              disabled={isGenerating}
-              className="btn btn-primary"
-              style={{ fontSize: '0.85rem', padding: '0.55rem 1.35rem' }}
+              onClick={() => setAiOnly(!aiOnly)}
+              className={`btn ${aiOnly ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '0.4rem 0.95rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
             >
-              {isGenerating ? <RefreshCw size={15} className="animate-spin" /> : <Sparkles size={15} />}
-              <span>{isGenerating ? 'Generating with Claude API...' : 'Generate & Dispatch AI Notice'}</span>
+              <Sparkles size={14} style={{ color: aiOnly ? '#FAF7F2' : 'var(--accent-gold)' }} />
+              <span>AI-generated only</span>
+              {aiOnly && <span className="status-badge badge-olive" style={{ fontSize: '0.65rem', padding: '0.05rem 0.35rem' }}>Active</span>}
             </button>
-          </div>
 
-          {simResult && (
-            <div
-              className="animate-enter"
-              style={{
-                padding: '1.25rem',
-                borderRadius: '12px',
-                backgroundColor: 'var(--status-amber-bg)',
-                border: '1px solid var(--status-amber-border)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.5rem',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--status-amber-text)', textTransform: 'uppercase' }}>
-                  Generated Claude Output (Ready for SMS / WhatsApp Dispatch)
-                </span>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>154 tokens • Latency: 720ms</span>
-              </div>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-main)', lineHeight: 1.6, fontWeight: 500 }}>
-                "{simResult}"
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
-                <Link
-                  to={`/track/${selectedOrderObj.trackingUuid}`}
-                  target="_blank"
-                  className="btn btn-secondary"
-                  style={{ fontSize: '0.78rem', padding: '0.35rem 0.85rem' }}
-                >
-                  <span>Simulate Live Recipient Experience for {selectedOrderObj.id}</span>
-                  <ExternalLink size={13} />
-                </Link>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── Filter Bar ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            {[
-              { key: 'all', label: 'All Channels' },
-              { key: 'ai', label: 'Claude AI Generated' },
-              { key: 'sms', label: 'SMS Gateway' },
-              { key: 'whatsapp', label: 'WhatsApp API' },
-            ].map((f) => (
+            {/* Channel filter pills */}
+            {(['all', 'SMS', 'WhatsApp', 'Email'] as const).map((ch) => (
               <button
-                key={f.key}
-                onClick={() => setFilterType(f.key as any)}
-                className={`btn ${filterType === f.key ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '0.35rem 0.8rem', fontSize: '0.78rem' }}
+                key={ch}
+                onClick={() => setFilterChannel(ch)}
+                className={`tab-pill ${filterChannel === ch ? 'active' : ''}`}
+                style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
               >
-                {f.label}
+                {ch === 'all' ? 'All Channels' : ch}
               </button>
             ))}
           </div>
 
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Showing {filteredLogs.length} logged dispatches
+            Showing {filteredLogs.length} of {notifications.length} logged dispatches
           </span>
         </div>
 
         {/* ── Notifications Audit Log Cards ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          {filteredLogs.map((log, idx) => (
-            <div
-              key={log.id}
-              className={`card card-hover-lift animate-enter stagger-${Math.min(idx + 1, 5)}`}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.65rem',
-                padding: '1.35rem',
-                backgroundColor: '#FFFFFF',
-                borderRadius: '16px',
-                border: '1px solid var(--border-light)',
-                borderLeft: log.isAiGenerated ? '4px solid #C49746' : '4px solid var(--primary)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <span className="font-mono" style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-main)' }}>
-                    {log.orderId}
-                  </span>
+        {isLoading ? (
+          <div
+            style={{
+              padding: '4rem 2rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '1rem',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              border: '1px solid var(--border-light)',
+            }}
+          >
+            <RefreshCw size={28} className="spin-icon" style={{ color: 'var(--primary)' }} />
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              Loading system notification logs...
+            </span>
+          </div>
+        ) : filteredLogs.length === 0 ? (
+          <div
+            style={{
+              padding: '3.5rem 2rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.85rem',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              border: '1px solid var(--border-light)',
+              textAlign: 'center',
+            }}
+          >
+            <Bell size={36} style={{ color: 'var(--text-muted)', opacity: 0.6 }} />
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)' }}>
+              No Notifications Found
+            </h3>
+            <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', maxWidth: '400px' }}>
+              {aiOnly
+                ? 'No AI-generated notifications match your current filter selection.'
+                : 'No notifications currently registered in the database.'}
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {filteredLogs.map((log, idx) => {
+              const orderInfo = getOrderInfo(log.order_id);
 
-                  {log.isAiGenerated ? (
-                    <span className="status-badge badge-olive" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
-                      <Sparkles size={11} /> AI Explainer
-                    </span>
-                  ) : (
-                    <span className="status-badge badge-slate" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
-                      Standard Dispatch
-                    </span>
-                  )}
-
-                  <span className="status-badge badge-slate" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
-                    {log.channel}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <button
-                    onClick={() => handleCopyMessage(log.message, log.id)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      color: copiedId === log.id ? 'var(--status-emerald-text)' : 'var(--text-muted)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.2rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {copiedId === log.id ? <Check size={13} /> : <Copy size={13} />}
-                    <span>{copiedId === log.id ? 'Copied' : 'Copy'}</span>
-                  </button>
-
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{log.sentAt}</span>
-                </div>
-              </div>
-
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                {log.message}
-              </p>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-muted)', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
-                <span>Recipient: <strong>{log.recipient}</strong></span>
-                <Link
-                  to={`/track/${log.trackingUuid}`}
-                  style={{ color: 'var(--primary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.2rem', textDecoration: 'none' }}
+              return (
+                <div
+                  key={log.id}
+                  className={`card card-hover-lift animate-enter stagger-${Math.min(idx + 1, 5)}`}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.65rem',
+                    padding: '1.35rem',
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: '16px',
+                    border: '1px solid var(--border-light)',
+                    borderLeft: log.is_ai_generated ? '4px solid #C49746' : '4px solid var(--primary)',
+                  }}
                 >
-                  <span>Simulate Live Recipient Experience</span>
-                  <ExternalLink size={12} />
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span className="font-mono" style={{ fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                        {orderInfo ? orderInfo.order_code : log.order_id ? `Order #${log.order_id}` : 'System Broadcast'}
+                      </span>
+
+                      {log.is_ai_generated ? (
+                        <span className="status-badge badge-olive" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
+                          <Sparkles size={11} /> AI Explainer
+                        </span>
+                      ) : (
+                        <span className="status-badge badge-slate" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
+                          Standard Dispatch
+                        </span>
+                      )}
+
+                      <span className="status-badge badge-slate" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
+                        {log.channel}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <button
+                        onClick={() => handleCopyMessage(log.message, log.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          color: copiedId === log.id ? 'var(--status-emerald-text)' : 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.2rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {copiedId === log.id ? <Check size={13} /> : <Copy size={13} />}
+                        <span>{copiedId === log.id ? 'Copied' : 'Copy'}</span>
+                      </button>
+
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {log.sent_at ? new Date(log.sent_at).toLocaleTimeString() : 'Dispatched'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                    {log.message}
+                  </p>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', color: 'var(--text-muted)', paddingTop: '0.5rem', borderTop: '1px solid var(--border-light)' }}>
+                    <span>
+                      Recipient: <strong>{orderInfo?.customer_name || 'Customer'}</strong>
+                      {orderInfo?.customer_phone ? ` (${orderInfo.customer_phone})` : ''}
+                    </span>
+                    {orderInfo && (
+                      <Link
+                        to={`/track/${orderInfo.tracking_uuid}`}
+                        target="_blank"
+                        style={{ color: 'var(--primary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.2rem', textDecoration: 'none' }}
+                      >
+                        <span>Open Live Tracking</span>
+                        <ExternalLink size={12} />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
       </div>
     </ManagerLayout>

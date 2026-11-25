@@ -10,6 +10,8 @@ import { ManagerMapPage } from './pages/ManagerMapPage';
 import { ManagerOrdersPage } from './pages/ManagerOrdersPage';
 import { ManagerVehiclesPage } from './pages/ManagerVehiclesPage';
 import { ManagerRouteDetailPage } from './pages/ManagerRouteDetailPage';
+import { ManagerMaintenancePage } from './pages/ManagerMaintenancePage';
+import { ManagerNotificationsPage } from './pages/ManagerNotificationsPage';
 import { ManagerAnalyticsPage } from './pages/ManagerAnalyticsPage';
 import { DriverRoutePage } from './pages/DriverRoutePage';
 import { CustomerTrackingPage } from './pages/CustomerTrackingPage';
@@ -30,9 +32,9 @@ export const App: React.FC = () => {
               <Route path="/manager/orders" element={<ManagerOrdersPage />} />
               <Route path="/manager/vehicles" element={<ManagerVehiclesPage />} />
               <Route path="/manager/routes/:vehicleId" element={<ManagerRouteDetailPage />} />
-              <Route path="/manager/maintenance" element={<Navigate to="/manager/vehicles" replace />} />
+              <Route path="/manager/maintenance" element={<ManagerMaintenancePage />} />
               <Route path="/manager/analytics" element={<ManagerAnalyticsPage />} />
-              <Route path="/manager/notifications" element={<Navigate to="/manager/analytics" replace />} />
+              <Route path="/manager/notifications" element={<ManagerNotificationsPage />} />
             </Route>
 
             {/* Driver Protected Routes */}

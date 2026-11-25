@@ -109,9 +109,14 @@ export const ManagerAnalyticsPage: React.FC = () => {
         {/* ── Page Header & Tabs ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-              Analytics & AI Dispatches
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+                Analytics & AI Dispatches
+              </h1>
+              <span className="status-badge badge-slate" style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem' }}>
+                Sample data
+              </span>
+            </div>
             <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
               Fleet SLA benchmarks, delivery turnarounds, and automated Claude AI customer communications.
             </p>

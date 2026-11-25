@@ -1,21 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { getOrderByTrackingId } from '../data/mockOrders';
+import { apiClient } from '../api/client';
+import axios from 'axios';
 import {
   Sparkles,
   MapPin,
-  Phone,
   CheckCircle2,
   AlertTriangle,
-  ChevronRight,
-  Clock,
   Package,
   Search,
+  ChevronRight,
+  ArrowLeft,
+  Truck,
 } from 'lucide-react';
 import { CustomerTrackingModal } from '../components/CustomerTrackingModal';
+
+export interface PublicTrackingData {
+  order_code: string;
+  status: string;
+  stepper_status: string;
+  eta?: string | null;
+  estimated_arrival?: string | null;
+  driver_first_name?: string | null;
+  vehicle_position?: { lat: number; lng: number } | null;
+  delay_message?: string | null;
+}
 
 const createCustomerCarMarker = (isDelayed: boolean) => {
   const color = isDelayed ? '#8E4C0E' : '#4A5D3A';
@@ -47,38 +59,57 @@ const createCustomerCarMarker = (isDelayed: boolean) => {
 
 export const CustomerTrackingPage: React.FC = () => {
   const { trackingId } = useParams<{ trackingId: string }>();
+  const [data, setData] = useState<PublicTrackingData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isNotFound, setIsNotFound] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
-  
-  // Look up the exact order from centralized unified store
-  const data = getOrderByTrackingId(trackingId || 'a3f8c1e2-9b44-4e21-8f3a-1c9d7b2e5f10');
-
-  const [gpsProgress, setGpsProgress] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setGpsProgress((prev) => (prev >= 1 ? 0 : prev + 0.03));
-    }, 400);
-    return () => clearInterval(interval);
-  }, []);
+    let isMounted = true;
+    const fetchTracking = async () => {
+      if (!trackingId) {
+        setIsNotFound(true);
+        setIsLoading(false);
+        return;
+      }
 
-  const getInterpolatedPoint = (path: [number, number][], p: number): [number, number] => {
-    if (!path || path.length < 2) return path ? path[0] : [12.9716, 77.5946];
-    const totalSegments = path.length - 1;
-    const scaledP = p * totalSegments;
-    const index = Math.min(Math.floor(scaledP), totalSegments - 1);
-    const fraction = scaledP - index;
+      // If user provided order_code instead of UUID (e.g. starts with ORD-)
+      if (trackingId.startsWith('ORD-')) {
+        setIsNotFound(true);
+        setIsLoading(false);
+        return;
+      }
 
-    const start = path[index];
-    const end = path[index + 1];
+      setIsLoading(true);
+      setIsNotFound(false);
+      setFetchError(null);
 
-    const lat = start[0] + (end[0] - start[0]) * fraction;
-    const lng = start[1] + (end[1] - start[1]) * fraction;
-    return [lat, lng];
-  };
+      try {
+        const resp = await apiClient.get<PublicTrackingData>(`/track/${trackingId}`);
+        if (isMounted) {
+          setData(resp.data);
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          if (axios.isAxiosError(err) && err.response?.status === 404) {
+            setIsNotFound(true);
+          } else {
+            setFetchError('Unable to connect to live tracking server.');
+          }
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
 
-  const currentCarPos: [number, number] = data.routePolyline && data.routePolyline.length > 0
-    ? getInterpolatedPoint(data.routePolyline, gpsProgress)
-    : [data.vehicleLat, data.vehicleLng];
+    fetchTracking();
+    return () => {
+      isMounted = false;
+    };
+  }, [trackingId]);
 
   const steps = [
     { key: 'assigned', label: 'Order Intake' },
@@ -87,15 +118,158 @@ export const CustomerTrackingPage: React.FC = () => {
     { key: 'delivered', label: 'Doorstep Delivered' },
   ];
 
-  const getStepIndex = (status: string) => {
-    if (status === 'assigned' || status === 'pending') return 0;
-    if (status === 'picked_up') return 1;
-    if (status === 'in_transit' || status === 'delayed') return 2;
-    if (status === 'delivered') return 3;
-    return 0;
+  const getStepIndex = (stepperStatus?: string, orderStatus?: string) => {
+    const s = (stepperStatus || orderStatus || '').toLowerCase();
+    if (s === 'delivered') return 3;
+    if (s === 'in_transit') return 2;
+    if (s === 'picked_up') return 1;
+    return 0; // assigned / pending
   };
 
-  const currentIndex = getStepIndex(data.status);
+  const currentIndex = data ? getStepIndex(data.stepper_status, data.status) : 0;
+  const isDelayed = data?.status === 'delayed' || Boolean(data?.delay_message);
+
+  // ── 404 State: Friendly "Tracking link not found" ──
+  if (isNotFound) {
+    return (
+      <div style={{ backgroundColor: 'var(--bg-app)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <header style={{ backgroundColor: '#FAF7F2', borderBottom: '1px solid var(--border-light)', padding: '0.9rem 2rem' }}>
+          <div style={{ maxWidth: '920px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: 'var(--primary)', color: '#FAF7F2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                RW
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)', fontFamily: 'var(--font-serif)' }}>
+                Route<span style={{ color: 'var(--accent-gold)' }}>Wise</span>
+              </div>
+            </Link>
+          </div>
+        </header>
+
+        <main style={{ maxWidth: '520px', margin: '4rem auto', padding: '0 1.5rem', textAlign: 'center' }}>
+          <div
+            className="card animate-enter"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '20px',
+              padding: '3rem 2rem',
+              border: '1px solid var(--border-light)',
+              boxShadow: '0 8px 30px rgba(43, 36, 30, 0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--status-amber-bg)',
+                color: 'var(--status-amber-text)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1.5rem',
+              }}
+            >
+              <Package size={32} />
+            </div>
+
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', fontFamily: 'var(--font-serif)', marginBottom: '0.5rem' }}>
+              Tracking Link Not Found
+            </h1>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '2rem' }}>
+              We could not locate an active delivery corresponding to this tracking link. Please ensure you clicked the full tracking link provided in your delivery SMS or email notification.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+              <button
+                type="button"
+                onClick={() => setIsTrackingModalOpen(true)}
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '0.75rem' }}
+              >
+                <Search size={16} />
+                <span>Search by Order Tracking Link</span>
+              </button>
+
+              <Link
+                to="/"
+                className="btn btn-secondary"
+                style={{ width: '100%', padding: '0.75rem', textDecoration: 'none' }}
+              >
+                <ArrowLeft size={16} />
+                <span>Return to RouteWise Home</span>
+              </Link>
+            </div>
+          </div>
+        </main>
+
+        <CustomerTrackingModal
+          isOpen={isTrackingModalOpen}
+          onClose={() => setIsTrackingModalOpen(false)}
+        />
+      </div>
+    );
+  }
+
+  // ── Loading Skeleton ──
+  if (isLoading) {
+    return (
+      <div style={{ backgroundColor: 'var(--bg-app)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <header style={{ backgroundColor: '#FAF7F2', borderBottom: '1px solid var(--border-light)', padding: '0.9rem 2rem' }}>
+          <div style={{ maxWidth: '920px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: 'var(--primary)', color: '#FAF7F2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+                RW
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)', fontFamily: 'var(--font-serif)' }}>
+                RouteWise
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main style={{ maxWidth: '920px', margin: '3rem auto', padding: '0 1rem', width: '100%', textAlign: 'center' }}>
+          <div className="card" style={{ padding: '3rem', backgroundColor: '#FFFFFF', borderRadius: '18px', border: '1px solid var(--border-light)' }}>
+            <div className="loading-spinner" style={{ margin: '0 auto 1.5rem', width: '40px', height: '40px', border: '3px solid var(--border-light)', borderTopColor: 'var(--primary)', borderRadius: '50%' }} />
+            <h3 style={{ fontSize: '1.15rem', color: 'var(--text-main)', fontWeight: 600 }}>
+              Connecting to Live Satellite Telemetry...
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+              Retrieving verified stop status and driver coordinates
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (fetchError || !data) {
+    return (
+      <div style={{ backgroundColor: 'var(--bg-app)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <header style={{ backgroundColor: '#FAF7F2', borderBottom: '1px solid var(--border-light)', padding: '0.9rem 2rem' }}>
+          <div style={{ maxWidth: '920px', margin: '0 auto' }}>
+            <Link to="/" style={{ textDecoration: 'none', color: 'inherit', fontWeight: 700 }}>RouteWise</Link>
+          </div>
+        </header>
+        <main style={{ maxWidth: '500px', margin: '4rem auto', padding: '0 1rem', textAlign: 'center' }}>
+          <div className="card" style={{ padding: '2.5rem', backgroundColor: '#FFFFFF', borderRadius: '18px', border: '1px solid var(--border-light)' }}>
+            <AlertTriangle size={36} style={{ color: 'var(--status-amber-text)', margin: '0 auto 1rem' }} />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>{fetchError || 'Unable to load tracking details'}</h2>
+            <button onClick={() => window.location.reload()} className="btn btn-primary" style={{ marginTop: '1.5rem' }}>
+              Retry Connection
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const defaultPosition = data.vehicle_position
+    ? [data.vehicle_position.lat, data.vehicle_position.lng] as [number, number]
+    : [12.9716, 77.5946] as [number, number];
 
   return (
     <div style={{ backgroundColor: 'var(--bg-app)', minHeight: '100vh', color: 'var(--text-main)', display: 'flex', flexDirection: 'column' }}>
@@ -145,14 +319,6 @@ export const CustomerTrackingPage: React.FC = () => {
                 alignItems: 'center',
                 gap: '0.35rem',
                 transition: 'all var(--duration-fast) ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--primary)';
-                e.currentTarget.style.color = 'var(--primary)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-medium)';
-                e.currentTarget.style.color = 'var(--text-main)';
               }}
             >
               <Search size={13} style={{ color: 'var(--primary)' }} />
@@ -205,45 +371,43 @@ export const CustomerTrackingPage: React.FC = () => {
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   PACKAGE TRACKING
                 </span>
-                <span className={`status-badge ${data.isDelayed ? 'badge-amber' : data.status === 'delivered' ? 'badge-emerald' : 'badge-olive'}`}>
-                  {data.isDelayed ? <AlertTriangle size={11} /> : <CheckCircle2 size={11} />}
-                  {data.isDelayed ? 'Traffic Delay Notified' : data.status === 'delivered' ? 'Package Delivered' : 'On Schedule'}
+                <span className={`status-badge ${isDelayed ? 'badge-amber' : data.status === 'delivered' ? 'badge-emerald' : 'badge-olive'}`}>
+                  {isDelayed ? <AlertTriangle size={11} /> : <CheckCircle2 size={11} />}
+                  {isDelayed ? 'Traffic Delay Notified' : data.status === 'delivered' ? 'Package Delivered' : 'On Schedule'}
                 </span>
               </div>
 
+              {/* Order Code Label */}
               <h1 className="font-mono" style={{ fontSize: '2.1rem', fontWeight: 800, color: 'var(--text-main)', margin: '0.25rem 0' }}>
-                {data.id}
+                {data.order_code}
               </h1>
 
               <div style={{ fontSize: '0.925rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.2rem', marginTop: '0.25rem' }}>
                 <p style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <MapPin size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-                  <span>Deliver to: <strong style={{ color: 'var(--text-main)' }}>{data.customerName}</strong></span>
-                </p>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginLeft: '1.45rem' }}>
-                  {data.dropAddress} ({data.zone})
+                  <span>Assigned Fleet Courier: <strong style={{ color: 'var(--text-main)' }}>{data.driver_first_name || 'Fleet Driver'}</strong></span>
                 </p>
               </div>
             </div>
 
-            {/* Revised ETA Badge */}
+            {/* Estimated Arrival Badge */}
             <div
               style={{
-                backgroundColor: data.isDelayed ? 'var(--status-amber-bg)' : data.status === 'delivered' ? 'var(--status-emerald-bg)' : 'var(--status-olive-bg)',
-                border: `1px solid ${data.isDelayed ? 'var(--status-amber-border)' : data.status === 'delivered' ? 'var(--status-emerald-border)' : 'var(--status-olive-border)'}`,
+                backgroundColor: isDelayed ? 'var(--status-amber-bg)' : data.status === 'delivered' ? 'var(--status-emerald-bg)' : 'var(--status-olive-bg)',
+                border: `1px solid ${isDelayed ? 'var(--status-amber-border)' : data.status === 'delivered' ? 'var(--status-emerald-border)' : 'var(--status-olive-border)'}`,
                 borderRadius: '14px',
                 padding: '1rem 1.4rem',
                 textAlign: 'right',
               }}
             >
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: data.isDelayed ? 'var(--status-amber-text)' : data.status === 'delivered' ? 'var(--status-emerald-text)' : 'var(--status-olive-text)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {data.status === 'delivered' ? 'DELIVERY STATUS' : 'ESTIMATED ARRIVAL (ETA)'}
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: isDelayed ? 'var(--status-amber-text)' : data.status === 'delivered' ? 'var(--status-emerald-text)' : 'var(--status-olive-text)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {data.status === 'delivered' ? 'DELIVERY COMPLETED' : 'ESTIMATED ARRIVAL (ETA)'}
               </span>
-              <div className="font-mono" style={{ fontSize: '1.45rem', fontWeight: 800, color: data.isDelayed ? 'var(--status-amber-text)' : data.status === 'delivered' ? 'var(--status-emerald-text)' : 'var(--text-main)', marginTop: '0.1rem' }}>
-                {data.estimatedArrival}
+              <div className="font-mono" style={{ fontSize: '1.45rem', fontWeight: 800, color: isDelayed ? 'var(--status-amber-text)' : data.status === 'delivered' ? 'var(--status-emerald-text)' : 'var(--text-main)', marginTop: '0.1rem' }}>
+                {data.estimated_arrival || (data.eta ? new Date(data.eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Pending')}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                Window: {data.timeWindow}
+                Live GPS Algorithm Calculation
               </div>
             </div>
           </div>
@@ -259,7 +423,7 @@ export const CustomerTrackingPage: React.FC = () => {
                 left: '20px',
                 width: `calc(${(currentIndex / (steps.length - 1)) * 100}% - 40px)`,
                 height: '4px',
-                backgroundColor: data.isDelayed ? '#8E4C0E' : 'var(--primary)',
+                backgroundColor: isDelayed ? '#8E4C0E' : 'var(--primary)',
                 zIndex: 2,
                 transition: 'width 0.6s var(--ease-out)',
               }}
@@ -277,7 +441,7 @@ export const CustomerTrackingPage: React.FC = () => {
                         width: '38px',
                         height: '38px',
                         borderRadius: '50%',
-                        backgroundColor: isPassed ? (data.isDelayed && isCurrent ? '#8E4C0E' : 'var(--primary)') : '#FFFFFF',
+                        backgroundColor: isPassed ? (isDelayed && isCurrent ? '#8E4C0E' : 'var(--primary)') : '#FFFFFF',
                         border: isPassed ? 'none' : '3px solid var(--border-medium)',
                         color: '#FAF7F2',
                         fontWeight: 800,
@@ -301,33 +465,33 @@ export const CustomerTrackingPage: React.FC = () => {
             </div>
           </div>
 
-          {/* ── AI-Generated Smart Delay / Status Explanation Card ── */}
-          {data.aiDelayMessage && (
+          {/* ── Delay Card (Shown only if delay_message is present) ── */}
+          {data.delay_message && (
             <div
               className="animate-enter stagger-1"
               style={{
                 padding: '1.35rem 1.5rem',
                 borderRadius: '14px',
-                background: data.isDelayed ? 'linear-gradient(135deg, #FAF4E6, #F8EFE0)' : 'linear-gradient(135deg, #F0F5EC, #FAF7F2)',
-                border: data.isDelayed ? '1px solid #E4D5BC' : '1px solid var(--primary-border)',
+                background: 'linear-gradient(135deg, #FAF4E6, #F8EFE0)',
+                border: '1px solid #E4D5BC',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '0.5rem',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                <Sparkles size={16} style={{ color: data.isDelayed ? '#8E4C0E' : 'var(--primary)' }} />
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: data.isDelayed ? '#8E4C0E' : 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Smart Delivery Notice (Claude AI Telemetry Translation)
+                <Sparkles size={16} style={{ color: '#8E4C0E' }} />
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#8E4C0E', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Smart Delivery Notice (Route Telemetry Delay)
                 </span>
               </div>
               <p style={{ fontSize: '0.925rem', color: 'var(--text-main)', lineHeight: 1.6, fontWeight: 500 }}>
-                "{data.aiDelayMessage}"
+                "{data.delay_message}"
               </p>
             </div>
           )}
 
-          {/* ── Driver Contact Card ── */}
+          {/* ── Driver Info Card ── */}
           <div
             style={{
               padding: '1.15rem 1.35rem',
@@ -356,29 +520,25 @@ export const CustomerTrackingPage: React.FC = () => {
                   fontSize: '1rem',
                 }}
               >
-                {data.driverName.split(' ').map(n => n[0]).join('')}
+                {data.driver_first_name ? data.driver_first_name.charAt(0) : 'D'}
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
                   Assigned Courier
                 </div>
                 <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                  {data.driverName}
+                  {data.driver_first_name ? `${data.driver_first_name} (Verified Route Driver)` : 'RouteWise Fleet Driver'}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Vehicle: <strong>{data.assignedVehicle}</strong>
+                  Status: <strong>{data.status === 'delivered' ? 'Package Delivered' : 'On Active Delivery Tour'}</strong>
                 </div>
               </div>
             </div>
 
-            <a
-              href={`tel:${data.driverPhone}`}
-              className="btn btn-secondary"
-              style={{ fontSize: '0.85rem', padding: '0.55rem 1.15rem' }}
-            >
-              <Phone size={14} />
-              <span>Call Courier ({data.driverPhone})</span>
-            </a>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 600 }}>
+              <Truck size={18} />
+              <span>Dedicated Fleet Vehicle</span>
+            </div>
           </div>
         </div>
 
@@ -390,7 +550,7 @@ export const CustomerTrackingPage: React.FC = () => {
                 Live Courier GPS Telemetry
               </h3>
               <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                Satellite vehicle location for {data.id} in {data.zone}
+                Satellite vehicle location for {data.order_code}
               </p>
             </div>
             <span className="status-badge badge-olive" style={{ fontSize: '0.75rem' }}>
@@ -399,79 +559,28 @@ export const CustomerTrackingPage: React.FC = () => {
           </div>
 
           <div style={{ height: '340px', borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border-light)' }}>
-            <MapContainer center={[data.vehicleLat, data.vehicleLng]} zoom={13} style={{ width: '100%', height: '100%' }}>
+            <MapContainer center={defaultPosition} zoom={13} style={{ width: '100%', height: '100%' }}>
               <TileLayer
                 attribution='&copy; OpenStreetMap'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
-              {data.routePolyline && data.routePolyline.length > 0 && (
-                <Polyline
-                  positions={data.routePolyline}
-                  pathOptions={{
-                    color: data.isDelayed ? '#8E4C0E' : '#4A5D3A',
-                    weight: 5,
-                    opacity: 0.85,
-                    dashArray: '8, 8',
-                    className: 'anim-route-polyline',
-                  }}
-                />
+              {data.vehicle_position && (
+                <Marker position={[data.vehicle_position.lat, data.vehicle_position.lng]} icon={createCustomerCarMarker(isDelayed)}>
+                  <Popup>
+                    <div style={{ fontFamily: 'var(--font-sans)', padding: '0.2rem' }}>
+                      <strong style={{ fontSize: '0.85rem', color: '#201A16' }}>{data.driver_first_name || 'Driver'}</strong>
+                      <div style={{ fontSize: '0.75rem', color: '#6E6457', marginTop: '0.15rem' }}>
+                        Order: <strong>{data.order_code}</strong>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#6E6457', marginTop: '0.1rem' }}>
+                        Status: {data.status}
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
               )}
-
-              <Marker position={currentCarPos} icon={createCustomerCarMarker(data.isDelayed)}>
-                <Popup>
-                  <div style={{ fontFamily: 'var(--font-sans)', padding: '0.2rem' }}>
-                    <strong style={{ fontSize: '0.85rem', color: '#201A16' }}>{data.driverName} ({data.vehiclePlate})</strong>
-                    <div style={{ fontSize: '0.75rem', color: '#6E6457', marginTop: '0.15rem' }}>
-                      Order: <strong>{data.id}</strong>
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6E6457', marginTop: '0.1rem' }}>
-                      En route to: {data.dropAddress}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
             </MapContainer>
-          </div>
-        </div>
-
-        {/* ── Order Lifecycle Audit History ── */}
-        <div className="card animate-enter stagger-3" style={{ padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: '1rem', backgroundColor: '#FFFFFF', borderRadius: '18px', border: '1px solid var(--border-light)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Package size={18} style={{ color: 'var(--primary)' }} />
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-main)' }}>
-              Delivery Audit Trail & Manifest History
-            </h3>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', borderLeft: '2px solid var(--border-medium)', paddingLeft: '1.25rem', marginLeft: '0.5rem', marginTop: '0.5rem' }}>
-            {data.history.map((h, i) => (
-              <div key={i} style={{ position: 'relative' }}>
-                <div
-                  style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    backgroundColor: i === data.history.length - 1 ? (data.isDelayed ? '#8E4C0E' : 'var(--primary)') : 'var(--border-medium)',
-                    position: 'absolute',
-                    left: '-1.55rem',
-                    top: '0.2rem',
-                    border: '2px solid #FFFFFF',
-                  }}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', textTransform: 'uppercase' }}>
-                    {h.status}
-                  </span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                    <Clock size={11} /> {h.timestamp}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
-                  {h.note}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
 

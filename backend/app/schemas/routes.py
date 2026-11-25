@@ -21,6 +21,14 @@ class RouteStopResponse(BaseModel):
     actual_arrival: Optional[datetime.datetime] = None
     delay_reason: Optional[str] = None
     status: str
+    picked_up_at: Optional[datetime.datetime] = None
+    delivered_at: Optional[datetime.datetime] = None
+    is_estimated_eta: Optional[bool] = False
+    order_code: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    address: Optional[str] = None
+    weight_kg: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 

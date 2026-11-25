@@ -62,3 +62,7 @@ ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 DEPOT_LAT: float = float(os.getenv("DEPOT_LAT", "12.9781"))
 DEPOT_LNG: float = float(os.getenv("DEPOT_LNG", "77.5695"))
 
+# Configurable average vehicle speed in km/h for ETA estimations
+AVG_SPEED_KMPH: float = float(os.getenv("AVG_SPEED_KMPH", "25.0"))
+
+

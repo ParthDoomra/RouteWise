@@ -8,7 +8,9 @@ from pydantic import BaseModel
 class PublicTrackingResponse(BaseModel):
     order_code: str
     status: str
+    stepper_status: str
     eta: Optional[datetime.datetime] = None
+    estimated_arrival: Optional[str] = None
     driver_first_name: Optional[str] = None
     vehicle_position: Optional[Dict[str, float]] = None
     delay_message: Optional[str] = None

@@ -21,8 +21,21 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan context: create database tables on startup."""
+    """Application lifespan context: create database tables on startup and run safe migrations."""
     Base.metadata.create_all(bind=engine)
+    # Safe migration for existing tables
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        for sql in [
+            "ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;",
+        ]:
+            try:
+                conn.execute(text(sql))
+            except Exception:
+                pass
     yield
 
 

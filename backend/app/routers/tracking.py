@@ -1,8 +1,11 @@
 """Public Customer Tracking Router for RouteWise (No Authentication Required)."""
 
+import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.algorithms.haversine import haversine_km
+from app.config import AVG_SPEED_KMPH, DEPOT_LAT, DEPOT_LNG
 from app.database import get_db
 from app.models.driver import Driver
 from app.models.notification import Notification
@@ -26,8 +29,8 @@ def get_public_order_tracking(
     - Lookup is STRICTLY by tracking_uuid (UUID4). Lookup by order_code is never permitted and returns 404.
     - Bad or unknown tracking UUID returns 404.
     - Leaks NO customer or driver phone numbers, NO other orders, NO internal database IDs,
-      and NO full address list. Only returns order_code, status, ETA, driver's first name,
-      vehicle position, and delay message if any.
+      and NO full address list. Only returns order_code, status, stepper_status, estimated arrival,
+      driver's first name, vehicle position, and delay message if any.
     """
     cleaned_uuid = str(tracking_uuid).strip()
 
@@ -62,11 +65,49 @@ def get_public_order_tracking(
                 # Return strictly the driver's first name for privacy
                 driver_first_name = driver.name.strip().split()[0]
 
-    # 2. ETA: from route stop if available, or order time_window_end
+    # 2. ETA & estimated arrival string
     stop = db.query(RouteStop).filter(RouteStop.order_id == order.id).first()
-    eta = stop.eta if (stop and stop.eta) else order.time_window_end
+    eta_dt = None
+    if stop and stop.eta:
+        eta_dt = stop.eta
+    elif order.time_window_end:
+        eta_dt = order.time_window_end
+    else:
+        # Estimate based on distance from depot at AVG_SPEED_KMPH
+        try:
+            dist = haversine_km(DEPOT_LAT, DEPOT_LNG, float(order.drop_lat), float(order.drop_lng))
+            hours = dist / max(AVG_SPEED_KMPH, 1.0)
+            now = datetime.datetime.now(datetime.timezone.utc)
+            eta_dt = now + datetime.timedelta(hours=hours)
+        except Exception:
+            eta_dt = None
 
-    # 3. Delay message (from notification or delay_reason)
+    estimated_arrival_str = None
+    if eta_dt:
+        if isinstance(eta_dt, datetime.datetime):
+            estimated_arrival_str = eta_dt.strftime("%I:%M %p")
+        else:
+            estimated_arrival_str = str(eta_dt)
+
+    # 3. Stepper status value: 'assigned', 'picked_up', 'in_transit', 'delivered'
+    if order.status == "delivered":
+        stepper_status = "delivered"
+    elif order.status == "picked_up":
+        stepper_status = "picked_up"
+    elif order.status == "in_transit":
+        stepper_status = "in_transit"
+    elif order.status == "delayed":
+        if stop and stop.status in ["picked_up", "in_transit"]:
+            stepper_status = "in_transit"
+        elif stop and stop.status == "delivered":
+            stepper_status = "delivered"
+        else:
+            stepper_status = "assigned"
+    else:
+        # "pending", "assigned"
+        stepper_status = "assigned"
+
+    # 4. Delay message (from notification or delay_reason)
     delay_message = None
     latest_notif = (
         db.query(Notification)
@@ -82,7 +123,9 @@ def get_public_order_tracking(
     return PublicTrackingResponse(
         order_code=order.order_code,
         status=order.status,
-        eta=eta,
+        stepper_status=stepper_status,
+        eta=eta_dt,
+        estimated_arrival=estimated_arrival_str,
         driver_first_name=driver_first_name,
         vehicle_position=vehicle_position,
         delay_message=delay_message,

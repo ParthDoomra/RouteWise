@@ -27,6 +27,8 @@ class Order(Base):
     status = Column(String(20), default="pending", nullable=False)  # pending, assigned, picked_up, in_transit, delivered, delayed
     delay_reason = Column(String(255), nullable=True)
     vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True)
+    picked_up_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships

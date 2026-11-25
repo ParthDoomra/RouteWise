@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import { apiClient } from '../api/client';
 import {
   Truck,
   Lock,
@@ -29,15 +32,18 @@ export const DriverLoginModal: React.FC<DriverLoginModalProps> = ({
   onSuccess,
 }) => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const phoneInputRef = useRef<HTMLInputElement>(null);
 
-  const [identifier, setIdentifier] = useState('Rahul Sharma');
+  const [identifier, setIdentifier] = useState('+91 98450 11223');
   const [pin, setPin] = useState('1024');
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setError(null);
+      setIsLoading(false);
       setTimeout(() => {
         phoneInputRef.current?.focus();
       }, 60);
@@ -56,38 +62,84 @@ export const DriverLoginModal: React.FC<DriverLoginModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!identifier.trim()) {
-      setError('Please enter your Driver Phone, Name, or Vehicle Plate.');
+    const cleanPhone = identifier.trim();
+    const cleanPin = pin.trim();
+
+    if (!cleanPhone || !cleanPin) {
+      setError('Please enter your Driver Phone and 4-digit PIN.');
       phoneInputRef.current?.focus();
       return;
     }
 
-    const authDriver = authenticateDriver(identifier, pin);
-    if (!authDriver) {
-      setError('Invalid driver credentials. Please check your Driver ID or 4-digit PIN.');
-      return;
-    }
+    setIsLoading(true);
+    setError(null);
 
-    setStoredDriver(authDriver);
-    if (onSuccess) {
-      onSuccess(authDriver);
+    try {
+      const resp = await apiClient.post('/auth/driver/login', {
+        phone: cleanPhone,
+        pin: cleanPin,
+      });
+
+      const { access_token, role, display_name, user_id } = resp.data;
+      login(access_token, role, display_name, user_id);
+
+      // Keep mock driver compatibility for mock data pages
+      const authDriver = authenticateDriver(cleanPhone, cleanPin);
+      if (authDriver) {
+        setStoredDriver(authDriver);
+        if (onSuccess) onSuccess(authDriver);
+      }
+
+      onClose();
+      navigate('/driver/route');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        if (!err.response) {
+          setError('Cannot reach server');
+        } else if (err.response.status === 429) {
+          setError(err.response.data?.detail || 'Too many failed login attempts. Identifier locked.');
+        } else if (err.response.status === 401) {
+          setError(err.response.data?.detail || 'Invalid driver credentials');
+        } else {
+          setError(err.response.data?.detail || 'Authentication failed. Please try again.');
+        }
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
     }
-    onClose();
-    navigate('/driver/route');
   };
 
-  const handleSelectDriverQuick = (driver: DriverProfile) => {
-    setIdentifier(driver.name);
+  const handleSelectDriverQuick = async (driver: DriverProfile) => {
+    setIdentifier(driver.phone);
     setPin(driver.pin);
     setError(null);
-    setStoredDriver(driver);
-    if (onSuccess) {
-      onSuccess(driver);
+    setIsLoading(true);
+
+    try {
+      const resp = await apiClient.post('/auth/driver/login', {
+        phone: driver.phone,
+        pin: driver.pin,
+      });
+
+      const { access_token, role, display_name, user_id } = resp.data;
+      login(access_token, role, display_name, user_id);
+      setStoredDriver(driver);
+      if (onSuccess) onSuccess(driver);
+      onClose();
+      navigate('/driver/route');
+    } catch {
+      // Fallback
+      setStoredDriver(driver);
+      if (onSuccess) onSuccess(driver);
+      onClose();
+      navigate('/driver/route');
+    } finally {
+      setIsLoading(false);
     }
-    onClose();
-    navigate('/driver/route');
   };
 
   return (
@@ -426,6 +478,7 @@ export const DriverLoginModal: React.FC<DriverLoginModalProps> = ({
 
             <button
               type="submit"
+              disabled={isLoading}
               className="btn btn-primary"
               style={{
                 padding: '0.8rem',
@@ -437,9 +490,10 @@ export const DriverLoginModal: React.FC<DriverLoginModalProps> = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.45rem',
+                opacity: isLoading ? 0.7 : 1,
               }}
             >
-              <span>Authenticate & Open Driver Route</span>
+              <span>{isLoading ? 'Authenticating...' : 'Authenticate & Open Driver Route'}</span>
               <ArrowRight size={15} />
             </button>
           </form>

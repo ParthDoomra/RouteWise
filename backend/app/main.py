@@ -7,7 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # Ensures all models are registered with Base.metadata
 from app.database import Base, engine
-from app.routers.auth import router as auth_router
+from app.routers import (
+    auth_router,
+    driver_router,
+    maintenance_router,
+    notifications_router,
+    orders_router,
+    routes_router,
+    tracking_router,
+    vehicles_router,
+)
 
 
 @asynccontextmanager
@@ -36,8 +45,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
-app.include_router(auth_router)
+# Register routers (accessible at root and /api for architectural consistency)
+core_routers = [
+    auth_router,
+    orders_router,
+    vehicles_router,
+    maintenance_router,
+    notifications_router,
+    routes_router,
+    driver_router,
+    tracking_router,
+]
+
+for r in core_routers:
+    app.include_router(r)
+    app.include_router(r, prefix="/api")
 
 
 @app.get("/health")

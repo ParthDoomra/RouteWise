@@ -3,9 +3,13 @@ import { Link } from 'react-router-dom';
 import { InteractiveGlobe } from '../components/InteractiveGlobe';
 import { ArrowRight, ShieldCheck, Zap, Sparkles, MapPin } from 'lucide-react';
 import { CustomerTrackingModal } from '../components/CustomerTrackingModal';
+import { useAuth } from '../context/AuthContext';
 
 export const LandingPage: React.FC = () => {
+  const { isAuthenticated, role } = useAuth();
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+
+  const dispatcherDestination = isAuthenticated && role === 'manager' ? '/manager/dashboard' : '/login';
   return (
     <div style={{ backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
@@ -85,7 +89,7 @@ export const LandingPage: React.FC = () => {
               Track Order
             </button>
             <Link
-              to="/login"
+              to={dispatcherDestination}
               style={{
                 backgroundColor: '#201A16',
                 color: '#FAF7F2',
@@ -221,7 +225,7 @@ export const LandingPage: React.FC = () => {
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
               <Link
-                to="/login"
+                to={dispatcherDestination}
                 className="btn btn-pill"
                 style={{
                   backgroundColor: '#201A16',
@@ -552,7 +556,7 @@ export const LandingPage: React.FC = () => {
                 Application Views
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <Link to="/login" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>
+                <Link to={dispatcherDestination} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>
                   Dispatcher Command Center
                 </Link>
                 <Link to="/manager/map" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 500 }}>

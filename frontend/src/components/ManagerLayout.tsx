@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { NavLink, Link } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { CustomerTrackingModal } from './CustomerTrackingModal';
+import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
   Map,
@@ -18,7 +19,23 @@ interface ManagerLayoutProps {
 }
 
 export const ManagerLayout: React.FC<ManagerLayoutProps> = ({ children }) => {
+  const navigate = useNavigate();
+  const { displayName, logout } = useAuth();
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+
+  const name = displayName || 'Fleet Operations Manager';
+  const initials = name
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'FM';
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <div className="app-container" style={{ backgroundColor: 'var(--bg-app)' }}>
@@ -271,20 +288,21 @@ export const ManagerLayout: React.FC<ManagerLayoutProps> = ({ children }) => {
                 fontSize: '0.8rem',
               }}
             >
-              DC
+              {initials}
             </div>
             <div>
-              <div style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                Dispatcher Center
+              <div style={{ fontSize: '0.825rem', fontWeight: 700, color: 'var(--text-main)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                Bengaluru Hub #1
+                Operations Manager
               </div>
             </div>
           </div>
 
-          <Link
-            to="/login"
+          <button
+            type="button"
+            onClick={handleLogout}
             title="Log out to Login Page"
             style={{
               display: 'flex',
@@ -293,13 +311,23 @@ export const ManagerLayout: React.FC<ManagerLayoutProps> = ({ children }) => {
               width: '32px',
               height: '32px',
               borderRadius: '8px',
+              border: 'none',
+              backgroundColor: 'transparent',
               color: 'var(--text-muted)',
-              textDecoration: 'none',
+              cursor: 'pointer',
               transition: 'all var(--duration-fast) ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--status-rose-text)';
+              e.currentTarget.style.backgroundColor = '#FFF1F2';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-muted)';
+              e.currentTarget.style.backgroundColor = 'transparent';
             }}
           >
             <LogOut size={16} />
-          </Link>
+          </button>
         </div>
       </aside>
 

@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+import { apiClient } from '../api/client';
 import {
   ShieldCheck,
   Mail,
@@ -21,17 +24,20 @@ export const DispatcherLoginModal: React.FC<DispatcherLoginModalProps> = ({
   onClose,
 }) => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const emailInputRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setEmail('');
       setPassword('');
       setError(null);
+      setIsLoading(false);
       setTimeout(() => {
         emailInputRef.current?.focus();
       }, 60);
@@ -50,9 +56,9 @@ export const DispatcherLoginModal: React.FC<DispatcherLoginModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = email.trim();
     const cleanPassword = password.trim();
 
     if (!cleanEmail || !cleanPassword) {
@@ -60,24 +66,41 @@ export const DispatcherLoginModal: React.FC<DispatcherLoginModalProps> = ({
       return;
     }
 
-    // Validate demo credentials or standard email format
-    const isDemoAccount =
-      cleanEmail === 'manager@routewise.com' ||
-      cleanEmail === 'dispatcher@routewise.com' ||
-      cleanEmail.includes('@');
+    setIsLoading(true);
+    setError(null);
 
-    if (!isDemoAccount || cleanPassword.length < 4) {
-      setError('Invalid credentials. Use manager@routewise.com / password123 for demo access.');
-      return;
+    try {
+      const resp = await apiClient.post('/auth/manager/login', {
+        email: cleanEmail,
+        password: cleanPassword,
+      });
+
+      const { access_token, role, display_name, user_id } = resp.data;
+      login(access_token, role, display_name, user_id);
+      onClose();
+      navigate('/manager/dashboard');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        if (!err.response) {
+          setError('Cannot reach server');
+        } else if (err.response.status === 429) {
+          setError(err.response.data?.detail || 'Too many failed login attempts. Identifier locked.');
+        } else if (err.response.status === 401) {
+          setError(err.response.data?.detail || 'Invalid credentials');
+        } else {
+          setError(err.response.data?.detail || 'Authentication failed. Please try again.');
+        }
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
     }
-
-    onClose();
-    navigate('/manager/dashboard');
   };
 
   const handleQuickFillDemo = () => {
     setEmail('manager@routewise.com');
-    setPassword('password123');
+    setPassword('manager123');
     setError(null);
   };
 
@@ -337,6 +360,7 @@ export const DispatcherLoginModal: React.FC<DispatcherLoginModalProps> = ({
 
             <button
               type="submit"
+              disabled={isLoading}
               className="btn btn-primary"
               style={{
                 padding: '0.8rem',
@@ -349,9 +373,10 @@ export const DispatcherLoginModal: React.FC<DispatcherLoginModalProps> = ({
                 justifyContent: 'center',
                 gap: '0.45rem',
                 marginTop: '0.25rem',
+                opacity: isLoading ? 0.7 : 1,
               }}
             >
-              <span>Authenticate & Launch Console</span>
+              <span>{isLoading ? 'Authenticating...' : 'Authenticate & Launch Console'}</span>
               <ArrowRight size={15} />
             </button>
           </form>

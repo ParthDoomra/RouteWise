@@ -57,3 +57,8 @@ JWT_ALGORITHM: str = "HS256"
 JWT_EXPIRATION_HOURS: int = 8
 
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+
+# Configurable Depot coordinates (default: Bengaluru Majestic)
+DEPOT_LAT: float = float(os.getenv("DEPOT_LAT", "12.9781"))
+DEPOT_LNG: float = float(os.getenv("DEPOT_LNG", "77.5695"))
+

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ManagerLayout } from '../components/ManagerLayout';
 import { Link } from 'react-router-dom';
-import { getGlobalOrders, addGlobalOrder, type UnifiedOrder, type OrderStatus } from '../data/mockOrders';
+import { apiClient } from '../api/client';
+import axios from 'axios';
 import {
   Search,
   Plus,
@@ -11,7 +12,32 @@ import {
   ChevronRight,
   Truck,
   X,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
+
+export type OrderStatus = 'pending' | 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'delayed';
+
+export interface BackendOrder {
+  id: number;
+  order_code: string;
+  tracking_uuid: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  pickup_address?: string | null;
+  drop_address?: string | null;
+  pickup_lat: number;
+  pickup_lng: number;
+  drop_lat: number;
+  drop_lng: number;
+  weight_kg: number;
+  time_window_start?: string | null;
+  time_window_end?: string | null;
+  status: OrderStatus;
+  delay_reason?: string | null;
+  vehicle_id?: number | null;
+  created_at?: string | null;
+}
 
 const renderStatusBadge = (status: OrderStatus) => {
   switch (status) {
@@ -32,89 +58,154 @@ const renderStatusBadge = (status: OrderStatus) => {
 };
 
 export const ManagerOrdersPage: React.FC = () => {
-  const [orders, setOrders] = useState<UnifiedOrder[]>(() => getGlobalOrders());
+  const [orders, setOrders] = useState<BackendOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedOrder, setSelectedOrder] = useState<UnifiedOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<BackendOrder | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState({
-    pickup: 'Indiranagar Central Hub, 100ft Rd',
-    drop: 'Koramangala 4th Block, #18, Bengaluru',
-    customerName: 'Pooja Hegde',
-    customerPhone: '+91 99887 76655',
-    weight: '6.5',
-    timeWindow: '15:00 - 17:00',
-    assignedVehicle: 'KA-01-EA-1024 (Rahul Sharma)',
-  });
+  // Add Order Form State
+  const [formCustomerName, setFormCustomerName] = useState('Pooja Hegde');
+  const [formCustomerPhone, setFormCustomerPhone] = useState('+91 99887 76655');
+  const [formPickupAddress, setFormPickupAddress] = useState('Majestic Central Depot, Bengaluru');
+  const [formPickupLat, setFormPickupLat] = useState('12.9781');
+  const [formPickupLng, setFormPickupLng] = useState('77.5695');
+  const [formDropAddress, setFormDropAddress] = useState('Indiranagar 100ft Rd, #18, Bengaluru');
+  const [formDropLat, setFormDropLat] = useState('12.9719');
+  const [formDropLng, setFormDropLng] = useState('77.6412');
+  const [formWeight, setFormWeight] = useState('12.5');
+  const [formSubmitError, setFormSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch real orders from GET /orders
+  const fetchOrders = useCallback(async () => {
+    setIsLoading(true);
+    setFetchError(null);
+    try {
+      const resp = await apiClient.get<BackendOrder[]>('/orders');
+      setOrders(resp.data);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setFetchError(err.message || 'Cannot reach server to load orders.');
+      } else {
+        setFetchError('Failed to load orders.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  // Filter and search
   const filteredOrders = orders.filter((order) => {
+    const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.pickupAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.dropAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.assignedVehicle.toLowerCase().includes(searchQuery.toLowerCase());
+      !q ||
+      order.order_code.toLowerCase().includes(q) ||
+      (order.customer_name && order.customer_name.toLowerCase().includes(q)) ||
+      (order.customer_phone && order.customer_phone.toLowerCase().includes(q)) ||
+      (order.pickup_address && order.pickup_address.toLowerCase().includes(q)) ||
+      (order.drop_address && order.drop_address.toLowerCase().includes(q)) ||
+      (order.vehicle_id && `vehicle #${order.vehicle_id}`.includes(q)) ||
+      order.status.toLowerCase().includes(q);
+
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newUuid = `ord-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-    const newOrderObj: UnifiedOrder = {
-      id: newId,
-      trackingUuid: newUuid,
-      pickupAddress: formData.pickup,
-      dropAddress: formData.drop,
-      zone: 'Koramangala / Central',
-      status: 'assigned',
-      isDelayed: false,
-      assignedVehicle: formData.assignedVehicle,
-      vehiclePlate: formData.assignedVehicle.split(' ')[0],
-      driverName: formData.assignedVehicle.includes('(') ? formData.assignedVehicle.split('(')[1].replace(')', '') : 'Assigned Courier',
-      driverPhone: '+91 98450 11223',
-      estimatedArrival: '16:15 PM (On Time)',
-      timeWindow: formData.timeWindow,
-      weightKg: parseFloat(formData.weight) || 5.0,
-      customerName: formData.customerName,
-      customerPhone: formData.customerPhone,
-      vehicleLat: 12.9716,
-      vehicleLng: 77.5946,
-      routePolyline: [
-        [12.9716, 77.5946],
-        [12.9650, 77.6100],
-        [12.9350, 77.6240],
-      ],
-      createdAt: 'Just now',
-      history: [
-        { status: 'created', timestamp: 'Just now', note: 'Order manifest submitted by dispatcher' },
-        { status: 'assigned', timestamp: 'Just now', note: `Assigned to ${formData.assignedVehicle}` },
-      ],
-      feedTime: 'Just now',
-      feedMessage: `Order ${newId} assigned to ${formData.assignedVehicle}.`,
-      isAiGenerated: false,
-    };
+    setFormSubmitError(null);
 
-    addGlobalOrder(newOrderObj);
-    setOrders(getGlobalOrders());
-    setSelectedOrder(newOrderObj);
-    setIsAddModalOpen(false);
+    const parsedWeight = parseFloat(formWeight);
+    const parsedPickupLat = parseFloat(formPickupLat);
+    const parsedPickupLng = parseFloat(formPickupLng);
+    const parsedDropLat = parseFloat(formDropLat);
+    const parsedDropLng = parseFloat(formDropLng);
+
+    if (isNaN(parsedWeight) || isNaN(parsedPickupLat) || isNaN(parsedPickupLng) || isNaN(parsedDropLat) || isNaN(parsedDropLng)) {
+      setFormSubmitError('Please enter valid numeric values for coordinates and weight.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const payload = {
+        customer_name: formCustomerName.trim() || null,
+        customer_phone: formCustomerPhone.trim() || null,
+        pickup_address: formPickupAddress.trim() || null,
+        pickup_lat: parsedPickupLat,
+        pickup_lng: parsedPickupLng,
+        drop_address: formDropAddress.trim() || null,
+        drop_lat: parsedDropLat,
+        drop_lng: parsedDropLng,
+        weight_kg: parsedWeight,
+      };
+
+      const resp = await apiClient.post<BackendOrder>('/orders', payload);
+      const newOrder = resp.data;
+
+      // Refresh orders list
+      await fetchOrders();
+      setSelectedOrder(newOrder);
+      setIsAddModalOpen(false);
+
+      // Reset form
+      setFormCustomerName('');
+      setFormCustomerPhone('');
+      setFormPickupAddress('Majestic Central Depot, Bengaluru');
+      setFormPickupLat('12.9781');
+      setFormPickupLng('77.5695');
+      setFormDropAddress('');
+      setFormDropLat('12.9719');
+      setFormDropLng('77.6412');
+      setFormWeight('10.0');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        if (!err.response) {
+          setFormSubmitError('Cannot reach server');
+        } else if (err.response.status === 422) {
+          const detail = err.response.data?.detail;
+          if (Array.isArray(detail)) {
+            const formatted = detail
+              .map((d: { loc?: string[]; msg?: string }) => {
+                const field = d.loc ? d.loc.slice(1).join('.') : 'Field';
+                return `${field}: ${d.msg}`;
+              })
+              .join(' | ');
+            setFormSubmitError(`Validation Error: ${formatted}`);
+          } else {
+            setFormSubmitError(typeof detail === 'string' ? detail : 'Invalid order input data.');
+          }
+        } else {
+          setFormSubmitError(err.response.data?.detail || 'Failed to create order on server.');
+        }
+      } else {
+        setFormSubmitError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const copyTrackingLink = (uuid: string, orderId: string) => {
+  const copyTrackingLink = (uuid: string, orderCode: string) => {
     const fullUrl = `${window.location.origin}/track/${uuid}`;
     navigator.clipboard.writeText(fullUrl);
-    setCopiedId(orderId);
+    setCopiedId(orderCode);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
     <ManagerLayout>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        
         {/* ── Title & Actions Header ── */}
         <div
           style={{
@@ -127,7 +218,15 @@ export const ManagerOrdersPage: React.FC = () => {
         >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <h1 style={{ fontSize: '1.75rem', fontWeight: 600, color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              <h1
+                style={{
+                  fontSize: '1.75rem',
+                  fontWeight: 600,
+                  color: 'var(--text-main)',
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1.2,
+                }}
+              >
                 Orders & Delivery Manifest
               </h1>
               <span className="status-badge badge-olive" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}>
@@ -139,15 +238,58 @@ export const ManagerOrdersPage: React.FC = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="btn btn-primary"
-            style={{ fontSize: '0.85rem', padding: '0.55rem 1.15rem' }}
-          >
-            <Plus size={16} />
-            <span>Create New Order</span>
-          </button>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+            <button
+              onClick={fetchOrders}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.85rem', padding: '0.55rem 0.85rem' }}
+              title="Refresh Orders"
+            >
+              <RefreshCw size={15} className={isLoading ? 'spin-icon' : ''} />
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={() => {
+                setFormSubmitError(null);
+                setIsAddModalOpen(true);
+              }}
+              className="btn btn-primary"
+              style={{ fontSize: '0.85rem', padding: '0.55rem 1.15rem' }}
+            >
+              <Plus size={16} />
+              <span>Create New Order</span>
+            </button>
+          </div>
         </div>
+
+        {/* ── Error Banner if Fetch Fails ── */}
+        {fetchError && (
+          <div
+            style={{
+              padding: '0.85rem 1.15rem',
+              borderRadius: '12px',
+              backgroundColor: '#FFF1F2',
+              border: '1px solid #FECDD3',
+              color: 'var(--status-rose-text)',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <AlertTriangle size={16} />
+              <span>{fetchError}</span>
+            </div>
+            <button
+              onClick={fetchOrders}
+              className="btn btn-secondary"
+              style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem' }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* ── Search & Filter Pill Bar ── */}
         <div
@@ -163,10 +305,19 @@ export const ManagerOrdersPage: React.FC = () => {
           }}
         >
           <div style={{ position: 'relative', flex: 1, minWidth: '240px', maxWidth: '420px' }}>
-            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <Search
+              size={15}
+              style={{
+                position: 'absolute',
+                left: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+              }}
+            />
             <input
               type="text"
-              placeholder="Search Order ID, customer, address, vehicle..."
+              placeholder="Search Order Code, customer, address, status..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="input-clean"
@@ -177,11 +328,11 @@ export const ManagerOrdersPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
             {[
               { key: 'all', label: 'All Orders', count: orders.length },
-              { key: 'in_transit', label: 'In Transit', count: orders.filter(o => o.status === 'in_transit').length },
-              { key: 'delayed', label: 'Delayed', count: orders.filter(o => o.status === 'delayed').length },
-              { key: 'assigned', label: 'Assigned', count: orders.filter(o => o.status === 'assigned').length },
-              { key: 'delivered', label: 'Delivered', count: orders.filter(o => o.status === 'delivered').length },
-              { key: 'pending', label: 'Pending', count: orders.filter(o => o.status === 'pending').length },
+              { key: 'in_transit', label: 'In Transit', count: orders.filter((o) => o.status === 'in_transit').length },
+              { key: 'delayed', label: 'Delayed', count: orders.filter((o) => o.status === 'delayed').length },
+              { key: 'assigned', label: 'Assigned', count: orders.filter((o) => o.status === 'assigned').length },
+              { key: 'delivered', label: 'Delivered', count: orders.filter((o) => o.status === 'delivered').length },
+              { key: 'pending', label: 'Pending', count: orders.filter((o) => o.status === 'pending').length },
             ].map((f) => (
               <button
                 key={f.key}
@@ -196,79 +347,125 @@ export const ManagerOrdersPage: React.FC = () => {
         </div>
 
         {/* ── Orders Table ── */}
-        <div className="card animate-enter stagger-2" style={{ padding: 0, overflow: 'hidden', backgroundColor: '#FFFFFF', borderRadius: '16px' }}>
+        <div
+          className="card animate-enter stagger-2"
+          style={{ padding: 0, overflow: 'hidden', backgroundColor: '#FFFFFF', borderRadius: '16px' }}
+        >
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
               <thead>
-                <tr style={{ backgroundColor: 'var(--bg-surface)', borderBottom: '1px solid var(--border-light)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <th style={{ padding: '1rem 1.25rem' }}>ORDER ID</th>
+                <tr
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    borderBottom: '1px solid var(--border-light)',
+                    color: 'var(--text-muted)',
+                    fontWeight: 700,
+                    fontSize: '0.72rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  <th style={{ padding: '1rem 1.25rem' }}>ORDER CODE</th>
                   <th style={{ padding: '1rem 1.25rem' }}>CUSTOMER</th>
                   <th style={{ padding: '1rem 1.25rem' }}>PICKUP HUB</th>
                   <th style={{ padding: '1rem 1.25rem' }}>DELIVERY DESTINATION</th>
                   <th style={{ padding: '1rem 1.25rem' }}>STATUS</th>
                   <th style={{ padding: '1rem 1.25rem' }}>ASSIGNED VEHICLE</th>
-                  <th style={{ padding: '1rem 1.25rem' }}>TIME WINDOW</th>
+                  <th style={{ padding: '1rem 1.25rem' }}>WEIGHT</th>
                   <th style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>ACTION</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order, idx) => (
-                  <tr
-                    key={order.id}
-                    onClick={() => setSelectedOrder(order)}
-                    className={`animate-enter stagger-${Math.min(idx + 1, 5)}`}
-                    style={{
-                      borderBottom: '1px solid var(--border-light)',
-                      cursor: 'pointer',
-                      transition: 'background-color var(--duration-fast) ease',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-card-hover)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                  >
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      <span className="font-mono" style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.9rem' }}>
-                        {order.id}
-                      </span>
-                    </td>
-
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{order.customerName}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{order.customerPhone}</div>
-                    </td>
-
-                    <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>
-                      {order.pickupAddress}
-                    </td>
-
-                    <td style={{ padding: '1rem 1.25rem', color: 'var(--text-main)', fontWeight: 500 }}>
-                      {order.dropAddress}
-                    </td>
-
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      {renderStatusBadge(order.status)}
-                    </td>
-
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-main)', fontWeight: 500 }}>
-                        <Truck size={14} style={{ color: 'var(--text-muted)' }} />
-                        <span>{order.assignedVehicle}</span>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: '3.5rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                        <RefreshCw size={24} className="spin-icon" style={{ color: 'var(--primary)' }} />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>Loading orders from server...</span>
                       </div>
                     </td>
-
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      <span className="font-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        {order.timeWindow}
-                      </span>
-                    </td>
-
-                    <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
-                      <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.825rem', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                        <span>Inspect</span>
-                        <ChevronRight size={14} />
-                      </span>
+                  </tr>
+                ) : filteredOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: '3.5rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)' }}>No orders found</span>
+                        <span style={{ fontSize: '0.825rem' }}>No delivery orders match your search or status filter.</span>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredOrders.map((order, idx) => (
+                    <tr
+                      key={order.id}
+                      onClick={() => setSelectedOrder(order)}
+                      className={`animate-enter stagger-${Math.min(idx + 1, 5)}`}
+                      style={{
+                        borderBottom: '1px solid var(--border-light)',
+                        cursor: 'pointer',
+                        transition: 'background-color var(--duration-fast) ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-card-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      <td style={{ padding: '1rem 1.25rem' }}>
+                        <span className="font-mono" style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.9rem' }}>
+                          {order.order_code}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: '1rem 1.25rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+                          {order.customer_name || 'Anonymous Customer'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {order.customer_phone || 'No phone provided'}
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '1rem 1.25rem', color: 'var(--text-secondary)' }}>
+                        {order.pickup_address || `${order.pickup_lat.toFixed(4)}, ${order.pickup_lng.toFixed(4)}`}
+                      </td>
+
+                      <td style={{ padding: '1rem 1.25rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                        {order.drop_address || `${order.drop_lat.toFixed(4)}, ${order.drop_lng.toFixed(4)}`}
+                      </td>
+
+                      <td style={{ padding: '1rem 1.25rem' }}>
+                        {renderStatusBadge(order.status)}
+                      </td>
+
+                      <td style={{ padding: '1rem 1.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                          <Truck size={14} style={{ color: 'var(--text-muted)' }} />
+                          <span>{order.vehicle_id ? `Vehicle #${order.vehicle_id}` : 'Unassigned (Pending)'}</span>
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '1rem 1.25rem' }}>
+                        <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                          {order.weight_kg ? `${order.weight_kg} kg` : 'N/A'}
+                        </span>
+                      </td>
+
+                      <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
+                        <span
+                          style={{
+                            color: 'var(--primary)',
+                            fontWeight: 700,
+                            fontSize: '0.825rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.2rem',
+                          }}
+                        >
+                          <span>Inspect</span>
+                          <ChevronRight size={14} />
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -303,18 +500,26 @@ export const ManagerOrdersPage: React.FC = () => {
                 boxShadow: 'var(--shadow-xl)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '1.5rem',
+                gap: '1.4rem',
                 borderLeft: '1px solid var(--border-light)',
               }}
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
                     Order Details Inspector
                   </span>
                   <h2 className="font-mono" style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '0.15rem' }}>
-                    {selectedOrder.id}
+                    {selectedOrder.order_code}
                   </h2>
                 </div>
                 <button
@@ -347,12 +552,20 @@ export const ManagerOrdersPage: React.FC = () => {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Specific Order Recipient Tracking Link
+                    Customer Tracking UUID Link
                   </span>
                   <Link
-                    to={`/track/${selectedOrder.trackingUuid}`}
+                    to={`/track/${selectedOrder.tracking_uuid}`}
                     target="_blank"
-                    style={{ fontSize: '0.78rem', color: 'var(--primary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem', textDecoration: 'none' }}
+                    style={{
+                      fontSize: '0.78rem',
+                      color: 'var(--primary)',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      textDecoration: 'none',
+                    }}
                   >
                     <span>Open Live View</span>
                     <ExternalLink size={13} />
@@ -371,109 +584,120 @@ export const ManagerOrdersPage: React.FC = () => {
                     wordBreak: 'break-all',
                   }}
                 >
-                  {window.location.origin}/track/{selectedOrder.trackingUuid}
+                  {window.location.origin}/track/{selectedOrder.tracking_uuid}
                 </div>
 
                 <button
-                  onClick={() => copyTrackingLink(selectedOrder.trackingUuid, selectedOrder.id)}
+                  onClick={() => copyTrackingLink(selectedOrder.tracking_uuid, selectedOrder.order_code)}
                   className="btn btn-secondary"
                   style={{ alignSelf: 'flex-start', fontSize: '0.78rem', padding: '0.4rem 0.85rem' }}
                 >
-                  {copiedId === selectedOrder.id ? <Check size={14} style={{ color: 'var(--status-emerald-text)' }} /> : <Copy size={14} />}
-                  <span>{copiedId === selectedOrder.id ? 'Tracking Link Copied!' : 'Copy Tracking Link'}</span>
+                  {copiedId === selectedOrder.order_code ? (
+                    <Check size={14} style={{ color: 'var(--status-emerald-text)' }} />
+                  ) : (
+                    <Copy size={14} />
+                  )}
+                  <span>{copiedId === selectedOrder.order_code ? 'Tracking Link Copied!' : 'Copy Tracking Link'}</span>
                 </button>
               </div>
 
               {/* Order Details Manifest */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', fontSize: '0.875rem' }}>
                 <div style={{ paddingBottom: '0.65rem', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>RECIPIENT CUSTOMER</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    RECIPIENT CUSTOMER
+                  </span>
                   <div style={{ fontWeight: 700, color: 'var(--text-main)', marginTop: '0.15rem' }}>
-                    {selectedOrder.customerName}
+                    {selectedOrder.customer_name || 'N/A'}
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    {selectedOrder.customerPhone}
+                    {selectedOrder.customer_phone || 'No phone'}
                   </div>
                 </div>
 
                 <div style={{ paddingBottom: '0.65rem', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>PICKUP ORIGIN</span>
-                  <div style={{ color: 'var(--text-main)', marginTop: '0.15rem' }}>{selectedOrder.pickupAddress}</div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    PICKUP ORIGIN
+                  </span>
+                  <div style={{ color: 'var(--text-main)', marginTop: '0.15rem' }}>
+                    {selectedOrder.pickup_address || `${selectedOrder.pickup_lat}, ${selectedOrder.pickup_lng}`}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                    Lat: {selectedOrder.pickup_lat.toFixed(4)}, Lng: {selectedOrder.pickup_lng.toFixed(4)}
+                  </div>
                 </div>
 
                 <div style={{ paddingBottom: '0.65rem', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>DELIVERY DESTINATION</span>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginTop: '0.15rem' }}>{selectedOrder.dropAddress}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>Zone: {selectedOrder.zone}</div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    DELIVERY DESTINATION
+                  </span>
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginTop: '0.15rem' }}>
+                    {selectedOrder.drop_address || `${selectedOrder.drop_lat}, ${selectedOrder.drop_lng}`}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                    Lat: {selectedOrder.drop_lat.toFixed(4)}, Lng: {selectedOrder.drop_lng.toFixed(4)}
+                  </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', paddingBottom: '0.65rem', borderBottom: '1px solid var(--border-light)' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '0.75rem',
+                    paddingBottom: '0.65rem',
+                    borderBottom: '1px solid var(--border-light)',
+                  }}
+                >
                   <div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>PAYLOAD WEIGHT</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+                      PAYLOAD WEIGHT
+                    </span>
                     <div className="font-mono" style={{ fontWeight: 700, color: 'var(--text-main)', marginTop: '0.15rem' }}>
-                      {selectedOrder.weightKg} kg
+                      {selectedOrder.weight_kg} kg
                     </div>
                   </div>
                   <div>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>TIME WINDOW</span>
-                    <div className="font-mono" style={{ color: 'var(--text-main)', marginTop: '0.15rem' }}>
-                      {selectedOrder.timeWindow}
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+                      ASSIGNED VEHICLE
+                    </span>
+                    <div style={{ color: 'var(--text-main)', marginTop: '0.15rem', fontWeight: 600 }}>
+                      {selectedOrder.vehicle_id ? `Vehicle ID #${selectedOrder.vehicle_id}` : 'Pending Assignment'}
                     </div>
                   </div>
                 </div>
 
-                <div style={{ paddingBottom: '0.65rem', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>DISPATCH COURIER & VEHICLE</span>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginTop: '0.15rem' }}>{selectedOrder.assignedVehicle}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Driver: {selectedOrder.driverName} ({selectedOrder.driverPhone})</div>
-                </div>
-              </div>
-
-              {/* Status Timeline */}
-              <div>
-                <h4 style={{ fontSize: '0.925rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--text-main)' }}>
-                  Delivery Lifecycle Audit Trail
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', borderLeft: '2px solid var(--border-medium)', paddingLeft: '1rem', marginLeft: '0.5rem' }}>
-                  {selectedOrder.history.map((h, i) => (
-                    <div key={i} style={{ position: 'relative' }}>
-                      <div
-                        style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          backgroundColor: i === selectedOrder.history.length - 1 ? 'var(--primary)' : 'var(--border-medium)',
-                          position: 'absolute',
-                          left: '-1.3rem',
-                          top: '0.25rem',
-                        }}
-                      />
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-main)', textTransform: 'uppercase' }}>
-                        {h.status} <span style={{ fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none' }}>• {h.timestamp}</span>
-                      </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                        {h.note}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {selectedOrder.delay_reason && (
+                  <div
+                    style={{
+                      padding: '0.75rem 0.95rem',
+                      borderRadius: '10px',
+                      backgroundColor: 'var(--status-amber-bg, #FEF3C7)',
+                      border: '1px solid #FDE68A',
+                      color: 'var(--status-amber-text, #92400E)',
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Delay Alert:</span>
+                    <span>{selectedOrder.delay_reason}</span>
+                  </div>
+                )}
               </div>
 
               {/* Direct Simulate Experience Button */}
               <Link
-                to={`/track/${selectedOrder.trackingUuid}`}
+                to={`/track/${selectedOrder.tracking_uuid}`}
+                target="_blank"
                 className="btn btn-primary"
                 style={{ width: '100%', marginTop: 'auto', fontSize: '0.875rem' }}
               >
-                <span>Simulate Live Recipient Experience for {selectedOrder.id}</span>
+                <span>Simulate Live Recipient Experience for {selectedOrder.order_code}</span>
                 <ExternalLink size={15} />
               </Link>
-
             </div>
           </div>
         )}
 
-        {/* ── Create New Order Modal ── */}
+        {/* ── Create New Order Modal (POST /orders) ── */}
         {isAddModalOpen && (
           <div
             style={{
@@ -495,8 +719,10 @@ export const ManagerOrdersPage: React.FC = () => {
             <div
               className="card modal-pop-in"
               style={{
-                width: '520px',
+                width: '540px',
                 maxWidth: '100%',
+                maxHeight: '90vh',
+                overflowY: 'auto',
                 padding: '2.25rem',
                 display: 'flex',
                 flexDirection: 'column',
@@ -512,7 +738,7 @@ export const ManagerOrdersPage: React.FC = () => {
                     Create Delivery Order
                   </h3>
                   <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
-                    Add pickup, drop location and auto-dispatch to available vehicle fleet.
+                    Submits to live backend (POST /orders) with coordinates and weight validation.
                   </p>
                 </div>
                 <button
@@ -523,6 +749,25 @@ export const ManagerOrdersPage: React.FC = () => {
                 </button>
               </div>
 
+              {formSubmitError && (
+                <div
+                  style={{
+                    padding: '0.75rem 0.95rem',
+                    borderRadius: '10px',
+                    backgroundColor: '#FFF1F2',
+                    border: '1px solid #FECDD3',
+                    color: 'var(--status-rose-text)',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                  }}
+                >
+                  <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                  <span>{formSubmitError}</span>
+                </div>
+              )}
+
               <form onSubmit={handleAddSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div>
@@ -531,10 +776,17 @@ export const ManagerOrdersPage: React.FC = () => {
                     </label>
                     <input
                       type="text"
-                      required
-                      value={formData.customerName}
-                      onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.825rem', backgroundColor: '#FFFFFF' }}
+                      value={formCustomerName}
+                      onChange={(e) => setFormCustomerName(e.target.value)}
+                      placeholder="e.g. Pooja Hegde"
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-medium)',
+                        fontSize: '0.825rem',
+                        backgroundColor: '#FFFFFF',
+                      }}
                     />
                   </div>
 
@@ -544,25 +796,82 @@ export const ManagerOrdersPage: React.FC = () => {
                     </label>
                     <input
                       type="text"
-                      required
-                      value={formData.customerPhone}
-                      onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.825rem', backgroundColor: '#FFFFFF' }}
+                      value={formCustomerPhone}
+                      onChange={(e) => setFormCustomerPhone(e.target.value)}
+                      placeholder="e.g. +91 99887 76655"
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-medium)',
+                        fontSize: '0.825rem',
+                        backgroundColor: '#FFFFFF',
+                      }}
                     />
                   </div>
                 </div>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
-                    Pickup Hub Location
+                    Pickup Hub Address
                   </label>
                   <input
                     type="text"
                     required
-                    value={formData.pickup}
-                    onChange={(e) => setFormData({ ...formData, pickup: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.825rem', backgroundColor: '#FFFFFF' }}
+                    value={formPickupAddress}
+                    onChange={(e) => setFormPickupAddress(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-medium)',
+                      fontSize: '0.825rem',
+                      backgroundColor: '#FFFFFF',
+                    }}
                   />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
+                      Pickup Latitude (-90 to 90) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      required
+                      value={formPickupLat}
+                      onChange={(e) => setFormPickupLat(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-medium)',
+                        fontSize: '0.825rem',
+                        backgroundColor: '#FFFFFF',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
+                      Pickup Longitude (-180 to 180) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      required
+                      value={formPickupLng}
+                      onChange={(e) => setFormPickupLng(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-medium)',
+                        fontSize: '0.825rem',
+                        backgroundColor: '#FFFFFF',
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -572,48 +881,87 @@ export const ManagerOrdersPage: React.FC = () => {
                   <input
                     type="text"
                     required
-                    value={formData.drop}
-                    onChange={(e) => setFormData({ ...formData, drop: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.825rem', backgroundColor: '#FFFFFF' }}
+                    value={formDropAddress}
+                    onChange={(e) => setFormDropAddress(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-medium)',
+                      fontSize: '0.825rem',
+                      backgroundColor: '#FFFFFF',
+                    }}
                   />
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
-                      Weight (kg)
+                      Drop Latitude (-90 to 90) *
                     </label>
                     <input
                       type="number"
-                      step="0.1"
+                      step="0.0001"
                       required
-                      value={formData.weight}
-                      onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.825rem', backgroundColor: '#FFFFFF' }}
+                      value={formDropLat}
+                      onChange={(e) => setFormDropLat(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-medium)',
+                        fontSize: '0.825rem',
+                        backgroundColor: '#FFFFFF',
+                      }}
                     />
                   </div>
-
                   <div>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
-                      Assign Vehicle
+                      Drop Longitude (-180 to 180) *
                     </label>
-                    <select
-                      value={formData.assignedVehicle}
-                      onChange={(e) => setFormData({ ...formData, assignedVehicle: e.target.value })}
-                      style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', border: '1px solid var(--border-medium)', fontSize: '0.825rem', backgroundColor: '#FFFFFF' }}
-                    >
-                      <option value="KA-01-EA-1024 (Rahul Sharma)">KA-01-EA-1024 (Rahul Sharma)</option>
-                      <option value="KA-01-GB-5091 (Priya Nair)">KA-01-GB-5091 (Priya Nair)</option>
-                      <option value="KA-05-MC-8812 (Amit Patel)">KA-05-MC-8812 (Amit Patel)</option>
-                      <option value="KA-03-HA-3301 (Vikram Singh)">KA-03-HA-3301 (Vikram Singh)</option>
-                      <option value="KA-02-JL-4411 (Deepak Kumar)">KA-02-JL-4411 (Deepak Kumar)</option>
-                    </select>
+                    <input
+                      type="number"
+                      step="0.0001"
+                      required
+                      value={formDropLng}
+                      onChange={(e) => setFormDropLng(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-medium)',
+                        fontSize: '0.825rem',
+                        backgroundColor: '#FFFFFF',
+                      }}
+                    />
                   </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
+                    Payload Weight (kg, &gt; 0) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={formWeight}
+                    onChange={(e) => setFormWeight(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-medium)',
+                      fontSize: '0.825rem',
+                      backgroundColor: '#FFFFFF',
+                    }}
+                  />
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.75rem' }}>
                   <button
                     type="button"
+                    disabled={isSubmitting}
                     onClick={() => setIsAddModalOpen(false)}
                     className="btn btn-secondary"
                   >
@@ -621,17 +969,20 @@ export const ManagerOrdersPage: React.FC = () => {
                   </button>
                   <button
                     type="submit"
+                    disabled={isSubmitting}
                     className="btn btn-primary"
+                    style={{ opacity: isSubmitting ? 0.7 : 1 }}
                   >
-                    Save & Auto-Dispatch
+                    <span>{isSubmitting ? 'Submitting to Backend...' : 'Submit Order Manifest'}</span>
                   </button>
                 </div>
               </form>
             </div>
           </div>
         )}
-
       </div>
     </ManagerLayout>
   );
 };
+
+export default ManagerOrdersPage;

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.algorithms.optimizer import optimize_route
-from app.config import DEPOT_LAT, DEPOT_LNG
+from app.config import AVG_SPEED_KMPH, DEPOT_LAT, DEPOT_LNG
 from app.database import get_db
 from app.models.order import Order
 from app.models.route import Route
@@ -20,6 +20,7 @@ from app.schemas.routes import (
     RouteStopResponse,
 )
 from app.services.auth_deps import require_manager
+from app.services.delay_notification_service import send_order_lifecycle_notification
 from app.services.distance_provider import get_distance_matrix
 
 router = APIRouter(tags=["Route Optimization"])
@@ -141,11 +142,20 @@ def optimize_vehicle_route(
     saved_stops: List[RouteStop] = []
     seq = 1
 
+    route_start_dt = datetime.datetime.combine(route.route_date, datetime.time(9, 0, tzinfo=datetime.timezone.utc))
+    cum_km = 0.0
+
     for idx in order_indices:
         if idx == 0:
             continue  # index 0 represents the starting depot
         order = ordered_orders[idx - 1]
         stop_order.append(order.id)
+
+        # Compute leg distance and estimated arrival
+        if seq <= len(leg_by_leg):
+            cum_km += leg_by_leg[seq - 1]
+        hours = cum_km / max(AVG_SPEED_KMPH, 1.0)
+        stop_eta = route_start_dt + datetime.timedelta(hours=hours)
 
         stop = RouteStop(
             route_id=route.id,
@@ -153,6 +163,8 @@ def optimize_vehicle_route(
             sequence_no=seq,
             stop_lat=order.drop_lat,
             stop_lng=order.drop_lng,
+            eta=stop_eta,
+            original_eta=stop_eta,
             status="pending",
         )
         db.add(stop)
@@ -161,6 +173,7 @@ def optimize_vehicle_route(
         # Mark order assigned to this vehicle
         order.status = "assigned"
         order.vehicle_id = vehicle.id
+        send_order_lifecycle_notification(db, order, "assigned")
         seq += 1
 
     # Mark vehicle on route

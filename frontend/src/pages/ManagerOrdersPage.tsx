@@ -14,6 +14,7 @@ import {
   X,
   AlertTriangle,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 
 export type OrderStatus = 'pending' | 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'delayed';
@@ -34,7 +35,9 @@ export interface BackendOrder {
   time_window_start?: string | null;
   time_window_end?: string | null;
   status: OrderStatus;
+  zone?: string | null;
   delay_reason?: string | null;
+  latest_delay_message?: string | null;
   vehicle_id?: number | null;
   created_at?: string | null;
 }
@@ -67,6 +70,15 @@ export const ManagerOrdersPage: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<BackendOrder | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Flag Delay Modal State
+  const [isFlagDelayModalOpen, setIsFlagDelayModalOpen] = useState(false);
+  const [delayModalOrder, setDelayModalOrder] = useState<BackendOrder | null>(null);
+  const [flagDelayReason, setFlagDelayReason] = useState('traffic');
+  const [flagDelayMinutes, setFlagDelayMinutes] = useState(20);
+  const [isSubmittingDelay, setIsSubmittingDelay] = useState(false);
+  const [flagDelayError, setFlagDelayError] = useState<string | null>(null);
+  const [flagDelaySuccess, setFlagDelaySuccess] = useState<string | null>(null);
 
   // Add Order Form State
   const [formCustomerName, setFormCustomerName] = useState('Pooja Hegde');
@@ -193,6 +205,40 @@ export const ManagerOrdersPage: React.FC = () => {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleFlagDelay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!delayModalOrder) return;
+    setIsSubmittingDelay(true);
+    setFlagDelayError(null);
+
+    try {
+      const resp = await apiClient.post(`/orders/${delayModalOrder.id}/flag-delay`, {
+        reason: flagDelayReason,
+        delay_minutes: Number(flagDelayMinutes),
+      });
+
+      setIsFlagDelayModalOpen(false);
+      setFlagDelaySuccess(
+        `Delay flagged for ${delayModalOrder.order_code}: +${flagDelayMinutes}m (${resp.data.generation_source})`
+      );
+      setTimeout(() => setFlagDelaySuccess(null), 6000);
+      await fetchOrders();
+      setSelectedOrder((prev) =>
+        prev && prev.id === delayModalOrder.id
+          ? { ...prev, status: 'delayed', delay_reason: flagDelayReason, latest_delay_message: resp.data.message }
+          : prev
+      );
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setFlagDelayError(err.response?.data?.detail || err.message || 'Failed to flag delay');
+      } else {
+        setFlagDelayError('Unexpected error flagging delay');
+      }
+    } finally {
+      setIsSubmittingDelay(false);
     }
   };
 
@@ -666,6 +712,22 @@ export const ManagerOrdersPage: React.FC = () => {
                   </div>
                 </div>
 
+                {flagDelaySuccess && (
+                  <div
+                    style={{
+                      padding: '0.75rem 0.95rem',
+                      borderRadius: '10px',
+                      backgroundColor: 'var(--status-emerald-bg)',
+                      border: '1px solid var(--status-emerald-border)',
+                      color: 'var(--status-emerald-text)',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    ✓ {flagDelaySuccess}
+                  </div>
+                )}
+
                 {selectedOrder.delay_reason && (
                   <div
                     style={{
@@ -679,20 +741,162 @@ export const ManagerOrdersPage: React.FC = () => {
                   >
                     <span style={{ fontWeight: 700, display: 'block', marginBottom: '0.2rem' }}>Delay Alert:</span>
                     <span>{selectedOrder.delay_reason}</span>
+                    {selectedOrder.latest_delay_message && (
+                      <p style={{ marginTop: '0.35rem', fontStyle: 'italic', fontSize: '0.78rem' }}>
+                        "{selectedOrder.latest_delay_message}"
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Direct Simulate Experience Button */}
-              <Link
-                to={`/track/${selectedOrder.tracking_uuid}`}
-                target="_blank"
-                className="btn btn-primary"
-                style={{ width: '100%', marginTop: 'auto', fontSize: '0.875rem' }}
-              >
-                <span>Simulate Live Recipient Experience for {selectedOrder.order_code}</span>
-                <ExternalLink size={15} />
-              </Link>
+              {/* Action Buttons: Flag Delay & Simulate */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: 'auto' }}>
+                {selectedOrder.status !== 'delivered' && (
+                  <button
+                    onClick={() => {
+                      setDelayModalOrder(selectedOrder);
+                      setFlagDelayReason('traffic');
+                      setFlagDelayMinutes(20);
+                      setFlagDelayError(null);
+                      setIsFlagDelayModalOpen(true);
+                    }}
+                    className="btn btn-secondary"
+                    style={{ width: '100%', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                  >
+                    <AlertTriangle size={15} style={{ color: 'var(--status-amber-text)' }} />
+                    <span>Flag Delay for {selectedOrder.order_code}</span>
+                  </button>
+                )}
+
+                <Link
+                  to={`/track/${selectedOrder.tracking_uuid}`}
+                  target="_blank"
+                  className="btn btn-primary"
+                  style={{ width: '100%', fontSize: '0.875rem' }}
+                >
+                  <span>Simulate Live Recipient Experience</span>
+                  <ExternalLink size={15} />
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Flag Delay Modal (POST /orders/{id}/flag-delay) ── */}
+        {isFlagDelayModalOpen && delayModalOrder && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(32, 26, 22, 0.7)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
+            }}
+            onClick={() => setIsFlagDelayModalOpen(false)}
+          >
+            <div
+              className="modal-pop-in"
+              style={{
+                width: '460px',
+                maxWidth: '100%',
+                backgroundColor: '#FAF7F2',
+                borderRadius: '16px',
+                padding: '1.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.25rem',
+                border: '1px solid var(--border-light)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <AlertTriangle size={18} style={{ color: '#B86F28' }} />
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                    Flag Delay: {delayModalOrder.order_code}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setIsFlagDelayModalOpen(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleFlagDelay} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {flagDelayError && (
+                  <div style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', backgroundColor: 'var(--status-rose-bg)', color: 'var(--status-rose-text)', border: '1px solid var(--status-rose-border)', fontSize: '0.8rem' }}>
+                    {flagDelayError}
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
+                    Delay Reason
+                  </label>
+                  <select
+                    value={flagDelayReason}
+                    onChange={(e) => setFlagDelayReason(e.target.value)}
+                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', backgroundColor: '#FFFFFF', color: 'var(--text-main)', border: '1px solid var(--border-medium)', fontSize: '0.825rem' }}
+                  >
+                    <option value="traffic">Traffic Congestion</option>
+                    <option value="weather">Adverse Weather / Rain</option>
+                    <option value="vehicle_issue">Vehicle Mechanical Issue</option>
+                    <option value="address_issue">Address / Location Difficulty</option>
+                    <option value="high_volume">High Delivery Volume</option>
+                    <option value="unspecified">Unspecified Operational Delay</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
+                    Delay Duration (Minutes)
+                  </label>
+                  <select
+                    value={flagDelayMinutes}
+                    onChange={(e) => setFlagDelayMinutes(Number(e.target.value))}
+                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', backgroundColor: '#FFFFFF', color: 'var(--text-main)', border: '1px solid var(--border-medium)', fontSize: '0.825rem' }}
+                  >
+                    <option value={10}>10 minutes</option>
+                    <option value={15}>15 minutes</option>
+                    <option value={20}>20 minutes</option>
+                    <option value={30}>30 minutes</option>
+                    <option value={45}>45 minutes</option>
+                    <option value={60}>60 minutes</option>
+                    <option value={90}>90 minutes</option>
+                    <option value={120}>120 minutes</option>
+                  </select>
+                </div>
+
+                <div style={{ padding: '0.85rem', borderRadius: '10px', backgroundColor: 'var(--primary-tint)', border: '1px solid var(--primary-border)', fontSize: '0.78rem', color: 'var(--primary)', lineHeight: 1.5 }}>
+                  ✨ Generates an empathetic AI customer explanation (or fallback template) and dispatches a simulated SMS notification.
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsFlagDelayModalOpen(false)}
+                    className="btn btn-secondary"
+                    disabled={isSubmittingDelay}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isSubmittingDelay}
+                  >
+                    {isSubmittingDelay ? <RefreshCw size={14} className="spin-icon" /> : <Sparkles size={14} />}
+                    <span>{isSubmittingDelay ? 'Submitting...' : 'Flag & Dispatch Notice'}</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

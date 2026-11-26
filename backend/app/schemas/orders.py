@@ -10,6 +10,7 @@ class OrderCreate(BaseModel):
     customer_phone: Optional[str] = None
     pickup_address: Optional[str] = None
     drop_address: Optional[str] = None
+    zone: Optional[str] = None
     pickup_lat: float = Field(..., ge=-90.0, le=90.0, description="Pickup latitude must be between -90 and 90")
     pickup_lng: float = Field(..., ge=-180.0, le=180.0, description="Pickup longitude must be between -180 and 180")
     drop_lat: float = Field(..., ge=-90.0, le=90.0, description="Drop latitude must be between -90 and 90")
@@ -27,6 +28,7 @@ class OrderResponse(BaseModel):
     customer_phone: Optional[str] = None
     pickup_address: Optional[str] = None
     drop_address: Optional[str] = None
+    zone: Optional[str] = None
     pickup_lat: float
     pickup_lng: float
     drop_lat: float
@@ -36,6 +38,7 @@ class OrderResponse(BaseModel):
     time_window_end: Optional[datetime.datetime] = None
     status: str
     delay_reason: Optional[str] = None
+    latest_delay_message: Optional[str] = None
     vehicle_id: Optional[int] = None
     created_at: Optional[datetime.datetime] = None
 

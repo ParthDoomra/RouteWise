@@ -17,6 +17,7 @@ class RouteStop(Base):
     stop_lat = Column(Numeric(10, 6), nullable=True)
     stop_lng = Column(Numeric(10, 6), nullable=True)
     eta = Column(DateTime, nullable=True)
+    original_eta = Column(DateTime, nullable=True)
     actual_arrival = Column(DateTime, nullable=True)
     delay_reason = Column(String(255), nullable=True)
     status = Column(String(20), default="pending", nullable=False)

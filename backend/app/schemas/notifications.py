@@ -11,6 +11,8 @@ class NotificationResponse(BaseModel):
     message: str
     channel: str
     is_ai_generated: bool
+    generation_source: Optional[str] = "template"
+    delivery_status: Optional[str] = "simulated"
     sent_at: Optional[datetime.datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

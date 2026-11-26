@@ -107,18 +107,22 @@ def get_public_order_tracking(
         # "pending", "assigned"
         stepper_status = "assigned"
 
-    # 4. Delay message (from notification or delay_reason)
+    # 4. Delay message (stored on order, cleared when delivered)
     delay_message = None
-    latest_notif = (
-        db.query(Notification)
-        .filter(Notification.order_id == order.id)
-        .order_by(Notification.sent_at.desc())
-        .first()
-    )
-    if latest_notif and (order.status == "delayed" or latest_notif.is_ai_generated):
-        delay_message = latest_notif.message
-    elif order.delay_reason:
-        delay_message = order.delay_reason
+    if order.status != "delivered":
+        if order.latest_delay_message:
+            delay_message = order.latest_delay_message
+        else:
+            latest_notif = (
+                db.query(Notification)
+                .filter(Notification.order_id == order.id)
+                .order_by(Notification.sent_at.desc())
+                .first()
+            )
+            if latest_notif and (order.status == "delayed" or latest_notif.is_ai_generated):
+                delay_message = latest_notif.message
+            elif order.delay_reason:
+                delay_message = order.delay_reason
 
     return PublicTrackingResponse(
         order_code=order.order_code,

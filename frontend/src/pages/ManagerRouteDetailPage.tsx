@@ -17,6 +17,8 @@ import {
   AlertTriangle,
   Package,
   Plus,
+  Sparkles,
+  X,
 } from 'lucide-react';
 
 const createNumberedIcon = (num: number, isDepot: boolean = false) => {
@@ -140,6 +142,45 @@ export const ManagerRouteDetailPage: React.FC = () => {
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
+
+  // Flag Delay Modal state
+  const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
+  const [delayModalStop, setDelayModalStop] = useState<RouteStopItem | null>(null);
+  const [delayModalOrder, setDelayModalOrder] = useState<PendingOrder | null>(null);
+  const [delayReason, setDelayReason] = useState('traffic');
+  const [delayMinutes, setDelayMinutes] = useState(20);
+  const [isSubmittingDelay, setIsSubmittingDelay] = useState(false);
+  const [delayError, setDelayError] = useState<string | null>(null);
+  const [delaySuccess, setDelaySuccess] = useState<string | null>(null);
+
+  const handleFlagDelay = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!delayModalOrder) return;
+    setIsSubmittingDelay(true);
+    setDelayError(null);
+
+    try {
+      const resp = await apiClient.post(`/orders/${delayModalOrder.id}/flag-delay`, {
+        reason: delayReason,
+        delay_minutes: Number(delayMinutes),
+      });
+
+      setIsDelayModalOpen(false);
+      setDelaySuccess(
+        `Delay flagged for Stop #${delayModalStop?.sequence_no || ''} (${delayModalOrder.order_code}): +${delayMinutes}m (${resp.data.generation_source})`
+      );
+      setTimeout(() => setDelaySuccess(null), 6000);
+      await loadData();
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setDelayError(err.response?.data?.detail || err.message || 'Failed to flag delay');
+      } else {
+        setDelayError('Unexpected error flagging delay');
+      }
+    } finally {
+      setIsSubmittingDelay(false);
+    }
+  };
 
   // 1. Load Vehicles & Determine target vehicle
   const loadData = async () => {
@@ -903,22 +944,51 @@ export const ManagerRouteDetailPage: React.FC = () => {
                               {stopOrder?.weight_kg ? ` (${Number(stopOrder.weight_kg).toFixed(1)} kg)` : ''}
                             </span>
                             {stopOrder && (
-                              <Link
-                                to={`/track/${stopOrder.tracking_uuid}`}
-                                target="_blank"
-                                style={{
-                                  color: 'var(--primary)',
-                                  fontWeight: 700,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.2rem',
-                                  textDecoration: 'none',
-                                  fontSize: '0.75rem',
-                                }}
-                              >
-                                <span>Track Order</span>
-                                <ExternalLink size={11} />
-                              </Link>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                {stop.status !== 'delivered' && (
+                                  <button
+                                    onClick={() => {
+                                      setDelayModalStop(stop);
+                                      setDelayModalOrder(stopOrder || null);
+                                      setDelayReason('traffic');
+                                      setDelayMinutes(20);
+                                      setDelayError(null);
+                                      setIsDelayModalOpen(true);
+                                    }}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      color: 'var(--status-amber-text)',
+                                      fontWeight: 700,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.2rem',
+                                      fontSize: '0.75rem',
+                                      padding: 0,
+                                    }}
+                                  >
+                                    <AlertTriangle size={11} />
+                                    <span>Flag Delay</span>
+                                  </button>
+                                )}
+                                <Link
+                                  to={`/track/${stopOrder.tracking_uuid}`}
+                                  target="_blank"
+                                  style={{
+                                    color: 'var(--primary)',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                    textDecoration: 'none',
+                                    fontSize: '0.75rem',
+                                  }}
+                                >
+                                  <span>Track Order</span>
+                                  <ExternalLink size={11} />
+                                </Link>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -930,6 +1000,146 @@ export const ManagerRouteDetailPage: React.FC = () => {
 
             </div>
           </>
+        )}
+
+        {/* ── Delay Success Alert ── */}
+        {delaySuccess && (
+          <div
+            style={{
+              position: 'fixed',
+              bottom: '24px',
+              right: '24px',
+              zIndex: 300,
+              padding: '0.85rem 1.25rem',
+              borderRadius: '12px',
+              backgroundColor: 'var(--status-emerald-bg)',
+              color: 'var(--status-emerald-text)',
+              border: '1px solid var(--status-emerald-border)',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+            }}
+          >
+            ✓ {delaySuccess}
+          </div>
+        )}
+
+        {/* ── Flag Delay Modal (POST /orders/{id}/flag-delay) ── */}
+        {isDelayModalOpen && delayModalOrder && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(32, 26, 22, 0.7)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
+            }}
+            onClick={() => setIsDelayModalOpen(false)}
+          >
+            <div
+              className="modal-pop-in"
+              style={{
+                width: '460px',
+                maxWidth: '100%',
+                backgroundColor: '#FAF7F2',
+                borderRadius: '16px',
+                padding: '1.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.25rem',
+                border: '1px solid var(--border-light)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <AlertTriangle size={18} style={{ color: '#B86F28' }} />
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                    Flag Delay: Stop #{delayModalStop?.sequence_no || ''} ({delayModalOrder.order_code})
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setIsDelayModalOpen(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleFlagDelay} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {delayError && (
+                  <div style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', backgroundColor: 'var(--status-rose-bg)', color: 'var(--status-rose-text)', border: '1px solid var(--status-rose-border)', fontSize: '0.8rem' }}>
+                    {delayError}
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
+                    Delay Reason
+                  </label>
+                  <select
+                    value={delayReason}
+                    onChange={(e) => setDelayReason(e.target.value)}
+                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', backgroundColor: '#FFFFFF', color: 'var(--text-main)', border: '1px solid var(--border-medium)', fontSize: '0.825rem' }}
+                  >
+                    <option value="traffic">Traffic Congestion</option>
+                    <option value="weather">Adverse Weather / Rain</option>
+                    <option value="vehicle_issue">Vehicle Mechanical Issue</option>
+                    <option value="address_issue">Address / Location Difficulty</option>
+                    <option value="high_volume">High Delivery Volume</option>
+                    <option value="unspecified">Unspecified Operational Delay</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
+                    Delay Duration (Minutes)
+                  </label>
+                  <select
+                    value={delayMinutes}
+                    onChange={(e) => setDelayMinutes(Number(e.target.value))}
+                    style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', backgroundColor: '#FFFFFF', color: 'var(--text-main)', border: '1px solid var(--border-medium)', fontSize: '0.825rem' }}
+                  >
+                    <option value={10}>10 minutes</option>
+                    <option value={15}>15 minutes</option>
+                    <option value={20}>20 minutes</option>
+                    <option value={30}>30 minutes</option>
+                    <option value={45}>45 minutes</option>
+                    <option value={60}>60 minutes</option>
+                    <option value={90}>90 minutes</option>
+                    <option value={120}>120 minutes</option>
+                  </select>
+                </div>
+
+                <div style={{ padding: '0.85rem', borderRadius: '10px', backgroundColor: 'var(--primary-tint)', border: '1px solid var(--primary-border)', fontSize: '0.78rem', color: 'var(--primary)', lineHeight: 1.5 }}>
+                  ✨ Generates an AI-written recipient delay advisory (or fallback template) and dispatches a simulated SMS notification.
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsDelayModalOpen(false)}
+                    className="btn btn-secondary"
+                    disabled={isSubmittingDelay}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isSubmittingDelay}
+                  >
+                    {isSubmittingDelay ? <RefreshCw size={14} className="spin-icon" /> : <Sparkles size={14} />}
+                    <span>{isSubmittingDelay ? 'Submitting...' : 'Flag & Dispatch Notice'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
 
       </div>

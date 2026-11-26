@@ -85,38 +85,42 @@ export const ManagerNotificationsPage: React.FC = () => {
 
   const selectedOrderObj = orders.find((o) => String(o.id) === simOrderId) || orders[0] || null;
 
-  const handleSimulateClaude = () => {
+  const handleSimulateClaude = async () => {
     if (!selectedOrderObj) return;
     setIsGenerating(true);
     setSimResult(null);
 
-    setTimeout(() => {
-      let generated = '';
-      const custName = selectedOrderObj.customer_name || 'Valued Customer';
-      const ordCode = selectedOrderObj.order_code;
+    const disruptionMap: Record<string, string> = {
+      heavy_traffic: 'traffic',
+      rain: 'weather',
+      road_closure: 'unspecified',
+    };
+    const delayMinutesMap: Record<string, number> = {
+      '15 mins': 15,
+      '25 mins': 25,
+      '40 mins': 40,
+    };
 
-      if (simDisruption === 'heavy_traffic') {
-        generated = `Hello ${custName}, your delivery ${ordCode} is experiencing a temporary ~${simEstimatedDelay} delay due to peak traffic congestion along the main junction. Driver is actively navigating the shortest alternate route to reach you safely.`;
-      } else if (simDisruption === 'rain') {
-        generated = `Hello ${custName}, heavy monsoon rainfall in your delivery sector has necessitated cautious driving. Your package ${ordCode} will arrive in approximately ~${simEstimatedDelay}. Driver is en route with care.`;
+    try {
+      const resp = await apiClient.post<{ message: string; is_ai_generated: boolean; generation_source: string }>(
+        `/orders/${selectedOrderObj.id}/flag-delay`,
+        {
+          reason: disruptionMap[simDisruption] || 'traffic',
+          delay_minutes: delayMinutesMap[simEstimatedDelay] || 25,
+        }
+      );
+
+      setSimResult(resp.data.message);
+      await fetchData();
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setSimResult(`Error: ${err.response?.data?.detail || err.message}`);
       } else {
-        generated = `Hello ${custName}, an unexpected road closure diversion added ~${simEstimatedDelay} to our vehicle route. Delivery ${ordCode} has been rerouted and is currently en route to your doorstep.`;
+        setSimResult('Unexpected error generating notification');
       }
-
-      setSimResult(generated);
+    } finally {
       setIsGenerating(false);
-
-      // Prepend to notifications display
-      const simulatedNotif: BackendNotification = {
-        id: Date.now(),
-        order_id: selectedOrderObj.id,
-        message: generated,
-        channel: 'SMS',
-        is_ai_generated: true,
-        sent_at: new Date().toISOString(),
-      };
-      setNotifications((prev) => [simulatedNotif, ...prev]);
-    }, 650);
+    }
   };
 
   const handleCopyMessage = (text: string, id: number) => {
@@ -486,16 +490,16 @@ export const ManagerNotificationsPage: React.FC = () => {
 
                       {log.is_ai_generated ? (
                         <span className="status-badge badge-olive" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
-                          <Sparkles size={11} /> AI Explainer
+                          <Sparkles size={11} /> AI-Generated
                         </span>
                       ) : (
                         <span className="status-badge badge-slate" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
-                          Standard Dispatch
+                          template
                         </span>
                       )}
 
                       <span className="status-badge badge-slate" style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem' }}>
-                        {log.channel}
+                        {log.channel} (simulated send)
                       </span>
                     </div>
 

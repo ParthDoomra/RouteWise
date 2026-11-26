@@ -25,6 +25,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan context: create database tables on startup, run migrations, and start background simulator."""
     import asyncio
     from app.database import SessionLocal
+    from app.services.delay_notification_service import delay_detector_service
     from app.services.maintenance import run_maintenance_sweep
     from app.services.simulator import simulator
 
@@ -35,8 +36,33 @@ async def lifespan(app: FastAPI):
         for sql in [
             "ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP WITH TIME ZONE;",
             "ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS original_eta TIMESTAMP;",
+            "UPDATE route_stops SET original_eta = eta WHERE original_eta IS NULL AND eta IS NOT NULL;",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP WITH TIME ZONE;",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS zone VARCHAR(100);",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS latest_delay_message TEXT;",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS generation_source VARCHAR(20) DEFAULT 'template';",
+            "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20) DEFAULT 'simulated';",
+            """
+            UPDATE orders
+            SET zone = CASE
+                WHEN drop_address ILIKE '%HSR Layout%' THEN 'HSR Layout'
+                WHEN drop_address ILIKE '%MG Road%' THEN 'MG Road'
+                WHEN drop_address ILIKE '%Jayanagar%' THEN 'Jayanagar'
+                WHEN drop_address ILIKE '%BTM Layout%' THEN 'BTM Layout'
+                WHEN drop_address ILIKE '%Malleshwaram%' THEN 'Malleshwaram'
+                WHEN drop_address ILIKE '%Frazer Town%' THEN 'Frazer Town'
+                WHEN drop_address ILIKE '%Bellandur%' THEN 'Bellandur'
+                WHEN drop_address ILIKE '%JP Nagar%' THEN 'JP Nagar'
+                WHEN drop_address ILIKE '%Hoodi%' THEN 'Hoodi'
+                WHEN drop_address ILIKE '%Indiranagar%' THEN 'Indiranagar'
+                WHEN drop_address ILIKE '%Whitefield%' THEN 'Whitefield'
+                WHEN drop_address ILIKE '%Koramangala%' THEN 'Koramangala'
+                ELSE 'Central Bengaluru'
+            END
+            WHERE zone IS NULL OR zone = '';
+            """,
             "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_service_mileage_km NUMERIC(10, 2) DEFAULT 0.0;",
             "UPDATE vehicles SET last_service_mileage_km = mileage_km WHERE last_service_mileage_km IS NULL;",
         ]:
@@ -54,11 +80,14 @@ async def lifespan(app: FastAPI):
     finally:
         sweep_db.close()
 
-    # Start vehicle position simulator background loop
+    # Start background loops
     sim_task = asyncio.create_task(simulator.run_loop())
+    delay_task = asyncio.create_task(delay_detector_service.run_loop())
 
     yield
 
+    delay_detector_service.shutdown()
+    delay_task.cancel()
     simulator.shutdown()
     sim_task.cancel()
 

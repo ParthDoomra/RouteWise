@@ -62,8 +62,11 @@ export const DriverRoutePage: React.FC = () => {
 
   // Delay reporting modal state
   const [delayModalOpen, setDelayModalOpen] = useState(false);
-  const [delayReason, setDelayReason] = useState('Heavy traffic junction at Outer Ring Road');
-  const [delayDuration, setDelayDuration] = useState('20 mins');
+  const [delayTargetStop, setDelayTargetStop] = useState<BackendRouteStop | null>(null);
+  const [delayReason, setDelayReason] = useState('traffic');
+  const [delayMinutes, setDelayMinutes] = useState(20);
+  const [isSendingDelay, setIsSendingDelay] = useState(false);
+  const [delayError, setDelayError] = useState<string | null>(null);
   const [aiNoticeSent, setAiNoticeSent] = useState<string | null>(null);
 
   // Load driver assigned route from GET /driver/route
@@ -170,14 +173,38 @@ export const DriverRoutePage: React.FC = () => {
     }
   };
 
-  const handleSendDelayReport = (e: React.FormEvent) => {
+  const handleSendDelayReport = async (e: React.FormEvent) => {
     e.preventDefault();
-    setDelayModalOpen(false);
-    const activeStop = stops.find((s) => s.sequence_no === expandedSeq);
-    setAiNoticeSent(
-      `AI Dispatch Notice generated for ${activeStop?.order_code || 'Stop'}: Revised ETA +${delayDuration}`
-    );
-    setTimeout(() => setAiNoticeSent(null), 5000);
+    const targetStop = delayTargetStop || activeStop;
+    if (!targetStop) return;
+
+    setIsSendingDelay(true);
+    setDelayError(null);
+
+    try {
+      const resp = await apiClient.post(`/driver/stops/${targetStop.id}/report-delay`, {
+        reason: delayReason,
+        delay_minutes: Number(delayMinutes),
+      });
+
+      setDelayModalOpen(false);
+      const isAi = resp.data.is_ai_generated;
+      setAiNoticeSent(
+        isAi
+          ? `AI Delay Advisory generated & sent for ${targetStop.order_code || 'Stop'}: +${delayMinutes}m`
+          : `Delay Notice sent for ${targetStop.order_code || 'Stop'}: +${delayMinutes}m`
+      );
+      setTimeout(() => setAiNoticeSent(null), 6000);
+      fetchDriverRoute();
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setDelayError(err.response?.data?.detail || err.message || 'Failed to report delay');
+      } else {
+        setDelayError('Unexpected error reporting delay');
+      }
+    } finally {
+      setIsSendingDelay(false);
+    }
   };
 
   const completedCount = stops.filter((s) => s.status === 'delivered').length;
@@ -588,7 +615,11 @@ export const DriverRoutePage: React.FC = () => {
               )}
 
               <button
-                onClick={() => setDelayModalOpen(true)}
+                onClick={() => {
+                  setDelayTargetStop(activeStop || null);
+                  setDelayError(null);
+                  setDelayModalOpen(true);
+                }}
                 className="btn"
                 style={{
                   flex: 1,
@@ -770,40 +801,52 @@ export const DriverRoutePage: React.FC = () => {
               </div>
 
               <form onSubmit={handleSendDelayReport} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {delayError && (
+                  <div style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', backgroundColor: 'var(--status-rose-bg)', color: 'var(--status-rose-text)', border: '1px solid var(--status-rose-border)', fontSize: '0.8rem' }}>
+                    {delayError}
+                  </div>
+                )}
+
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
-                    Disruption Reason
+                    Delay Reason
                   </label>
                   <select
                     value={delayReason}
                     onChange={(e) => setDelayReason(e.target.value)}
                     style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', backgroundColor: '#FFFFFF', color: 'var(--text-main)', border: '1px solid var(--border-medium)', fontSize: '0.825rem' }}
                   >
-                    <option value="Heavy traffic junction at Outer Ring Road">Heavy traffic junction at Outer Ring Road</option>
-                    <option value="Monsoon rain and waterlogging">Monsoon rain & waterlogging</option>
-                    <option value="Road construction barricade detour">Road construction barricade detour</option>
-                    <option value="Flat tire / quick tire puncture fix">Flat tire / quick puncture check</option>
+                    <option value="traffic">Traffic Congestion</option>
+                    <option value="weather">Adverse Weather / Rain</option>
+                    <option value="vehicle_issue">Vehicle Mechanical Issue</option>
+                    <option value="address_issue">Address / Location Difficulty</option>
+                    <option value="high_volume">High Delivery Volume</option>
+                    <option value="unspecified">Unspecified Operational Delay</option>
                   </select>
                 </div>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.3rem' }}>
-                    Estimated Delay
+                    Delay Duration (Minutes)
                   </label>
                   <select
-                    value={delayDuration}
-                    onChange={(e) => setDelayDuration(e.target.value)}
+                    value={delayMinutes}
+                    onChange={(e) => setDelayMinutes(Number(e.target.value))}
                     style={{ width: '100%', padding: '0.55rem', borderRadius: '8px', backgroundColor: '#FFFFFF', color: 'var(--text-main)', border: '1px solid var(--border-medium)', fontSize: '0.825rem' }}
                   >
-                    <option value="15 mins">~15 mins</option>
-                    <option value="20 mins">~20 mins</option>
-                    <option value="30 mins">~30 mins</option>
-                    <option value="45 mins">~45 mins</option>
+                    <option value={10}>10 minutes</option>
+                    <option value={15}>15 minutes</option>
+                    <option value={20}>20 minutes</option>
+                    <option value={30}>30 minutes</option>
+                    <option value={45}>45 minutes</option>
+                    <option value={60}>60 minutes</option>
+                    <option value={90}>90 minutes</option>
+                    <option value={120}>120 minutes</option>
                   </select>
                 </div>
 
                 <div style={{ padding: '0.85rem', borderRadius: '10px', backgroundColor: 'var(--primary-tint)', border: '1px solid var(--primary-border)', fontSize: '0.78rem', color: 'var(--primary)', lineHeight: 1.5 }}>
-                  ✨ Tapping submit will generate a verified recipient notice for this route delay.
+                  ✨ Tapping submit generates an AI customer advisory (or fallback notice) and sends a simulated customer SMS.
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
@@ -811,15 +854,17 @@ export const DriverRoutePage: React.FC = () => {
                     type="button"
                     onClick={() => setDelayModalOpen(false)}
                     className="btn btn-secondary"
+                    disabled={isSendingDelay}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     className="btn btn-primary"
+                    disabled={isSendingDelay}
                   >
-                    <Sparkles size={14} />
-                    <span>Send Notice</span>
+                    {isSendingDelay ? <RefreshCw size={14} className="spin-icon" /> : <Sparkles size={14} />}
+                    <span>{isSendingDelay ? 'Submitting...' : 'Send Notice'}</span>
                   </button>
                 </div>
               </form>

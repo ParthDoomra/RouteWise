@@ -14,8 +14,13 @@ from app.models.order import Order
 from app.models.route import Route
 from app.models.route_stop import RouteStop
 from app.models.vehicle import Vehicle
+from app.schemas.delays import DelayReportRequest, DelayReportResponse
 from app.schemas.routes import RouteResponse, RouteStopResponse
 from app.services.auth_deps import require_driver
+from app.services.delay_notification_service import (
+    record_or_update_delay,
+    send_order_lifecycle_notification,
+)
 
 router = APIRouter(tags=["Driver"])
 
@@ -184,6 +189,7 @@ def pickup_route_stop(
         if order:
             order.status = "picked_up"
             order.picked_up_at = now
+            send_order_lifecycle_notification(db, order, "picked_up")
 
     db.commit()
     db.refresh(stop)
@@ -253,6 +259,7 @@ def deliver_route_stop(
         if order:
             order.status = "delivered"
             order.delivered_at = now
+            send_order_lifecycle_notification(db, order, "delivered")
 
     # Check if all stops on this route are now delivered
     all_stops = db.query(RouteStop).filter(RouteStop.route_id == route.id).all()
@@ -273,3 +280,74 @@ def deliver_route_stop(
 
     start_time = datetime.datetime.combine(route.route_date, datetime.time(9, 0, tzinfo=datetime.timezone.utc))
     return _build_stop_response(stop, start_time, 0.0)
+
+
+@router.post("/driver/stops/{stop_id}/report-delay", response_model=DelayReportResponse)
+def report_driver_stop_delay(
+    stop_id: int,
+    payload: DelayReportRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_driver),
+):
+    """Report a delay on a route stop (Driver only - own stops only).
+
+    Rules:
+    - Stop must belong to the logged-in driver's assigned vehicle route (403 if other driver, 404 if unknown).
+    - Only ONE open delay event per order at a time; repeat reports update it without duplicate messages.
+    - Generates customer explanation using Claude (or fallback template).
+    - Stores latest delay message on the order.
+    """
+    driver_id = current_user.get("user_id")
+    driver = db.query(Driver).filter(Driver.id == driver_id).first()
+    if not driver or not driver.vehicle_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Driver is not assigned to an active vehicle",
+        )
+
+    stop = db.query(RouteStop).filter(RouteStop.id == stop_id).first()
+    if not stop:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stop with ID {stop_id} not found",
+        )
+
+    route = db.query(Route).filter(Route.id == stop.route_id).first()
+    if not route or route.vehicle_id != driver.vehicle_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Driver cannot report delay on another vehicle's stop",
+        )
+
+    if not stop.order_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stop is not associated with an active delivery order",
+        )
+
+    order = db.query(Order).filter(Order.id == stop.order_id).first()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order {stop.order_id} associated with stop not found",
+        )
+
+    delay_event, notif, _is_repeat = record_or_update_delay(
+        db=db,
+        order=order,
+        reason=payload.reason.value,
+        delay_minutes=payload.delay_minutes,
+        stop_id=stop.id,
+    )
+
+    return DelayReportResponse(
+        order_id=order.id,
+        order_code=order.order_code,
+        reason=delay_event.reason,
+        delay_minutes=delay_event.delay_minutes,
+        message=notif.message,
+        is_ai_generated=notif.is_ai_generated,
+        generation_source=notif.generation_source,
+        delivery_status=notif.delivery_status,
+        note="Real SMS or email delivery is simulated.",
+    )

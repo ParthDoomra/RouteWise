@@ -57,6 +57,13 @@ JWT_ALGORITHM: str = "HS256"
 JWT_EXPIRATION_HOURS: int = 8
 
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-haiku-5-5")
+
+# Delay Detection & AI Notifications
+DELAY_THRESHOLD_MIN: int = int(os.getenv("DELAY_THRESHOLD_MIN", "10"))
+DELAY_CHECK_AUTOSTART: bool = os.getenv("DELAY_CHECK_AUTOSTART", "false").lower() in ("true", "1", "yes")
+AI_RATE_LIMIT_MINUTES: int = 5
+AI_GLOBAL_RATE_LIMIT_PER_MIN: int = 10
 
 # Configurable Depot coordinates (default: Bengaluru Majestic)
 DEPOT_LAT: float = float(os.getenv("DEPOT_LAT", "12.9781"))

@@ -1,5 +1,6 @@
 """RouteWise SQLAlchemy Models Package."""
 
+from app.models.delay_event import DelayEvent
 from app.models.driver import Driver
 from app.models.driver_login import DriverLogin
 from app.models.maintenance_ticket import MaintenanceTicket
@@ -20,4 +21,5 @@ __all__ = [
     "RouteStop",
     "MaintenanceTicket",
     "Notification",
+    "DelayEvent",
 ]

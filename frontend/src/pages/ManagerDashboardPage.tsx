@@ -706,11 +706,15 @@ export const ManagerDashboardPage: React.FC = () => {
                       </p>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                         <span className="status-badge badge-slate" style={{ fontSize: '0.65rem', padding: '0.05rem 0.35rem' }}>
-                          {notif.channel}
+                          {notif.channel} (simulated send)
                         </span>
-                        {notif.is_ai_generated && (
-                          <span style={{ color: 'var(--accent-gold)', fontWeight: 700 }}>
-                            ✦ AI Generated
+                        {notif.is_ai_generated ? (
+                          <span className="status-badge badge-olive" style={{ fontSize: '0.65rem', padding: '0.05rem 0.35rem' }}>
+                            ✦ AI-Generated
+                          </span>
+                        ) : (
+                          <span className="status-badge badge-slate" style={{ fontSize: '0.65rem', padding: '0.05rem 0.35rem' }}>
+                            template
                           </span>
                         )}
                       </div>

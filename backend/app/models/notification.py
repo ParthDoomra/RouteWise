@@ -14,6 +14,8 @@ class Notification(Base):
     message = Column(Text, nullable=False)
     channel = Column(String(20), default="sms", nullable=False)  # sms, email
     is_ai_generated = Column(Boolean, default=False, nullable=False)
+    generation_source = Column(String(20), default="template", nullable=False)  # claude, template
+    delivery_status = Column(String(20), default="simulated", nullable=False)  # simulated
     sent_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships

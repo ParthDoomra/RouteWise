@@ -67,7 +67,7 @@ export const CustomerTrackingPage: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
-    const fetchTracking = async () => {
+    const fetchTracking = async (isInitial: boolean = false) => {
       if (!trackingId) {
         setIsNotFound(true);
         setIsLoading(false);
@@ -81,9 +81,11 @@ export const CustomerTrackingPage: React.FC = () => {
         return;
       }
 
-      setIsLoading(true);
-      setIsNotFound(false);
-      setFetchError(null);
+      if (isInitial) {
+        setIsLoading(true);
+        setIsNotFound(false);
+        setFetchError(null);
+      }
 
       try {
         const resp = await apiClient.get<PublicTrackingData>(`/track/${trackingId}`);
@@ -94,22 +96,36 @@ export const CustomerTrackingPage: React.FC = () => {
         if (isMounted) {
           if (axios.isAxiosError(err) && err.response?.status === 404) {
             setIsNotFound(true);
-          } else {
+          } else if (isInitial) {
             setFetchError('Unable to connect to live tracking server.');
           }
         }
       } finally {
-        if (isMounted) {
+        if (isMounted && isInitial) {
           setIsLoading(false);
         }
       }
     };
 
-    fetchTracking();
+    fetchTracking(true);
+
+    // Stop polling when the order is delivered
+    if (data?.status === 'delivered') {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    // Poll GET /track/{id} every 5 seconds so marker and status update live
+    const pollTimer = setInterval(() => {
+      fetchTracking(false);
+    }, 5000);
+
     return () => {
       isMounted = false;
+      clearInterval(pollTimer);
     };
-  }, [trackingId]);
+  }, [trackingId, data?.status]);
 
   const steps = [
     { key: 'assigned', label: 'Order Intake' },

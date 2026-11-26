@@ -39,6 +39,14 @@ def resolve_maintenance_ticket(
 
     ticket.status = "resolved"
     ticket.resolved_at = datetime.datetime.now(datetime.timezone.utc)
+
+    # Reset vehicle service clock
+    from app.models.vehicle import Vehicle
+    vehicle = db.query(Vehicle).filter(Vehicle.id == ticket.vehicle_id).first()
+    if vehicle:
+        vehicle.last_service_mileage_km = vehicle.mileage_km
+        vehicle.last_service_date = datetime.date.today()
+
     db.commit()
     db.refresh(ticket)
     return ticket

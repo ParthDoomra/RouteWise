@@ -65,4 +65,13 @@ DEPOT_LNG: float = float(os.getenv("DEPOT_LNG", "77.5695"))
 # Configurable average vehicle speed in km/h for ETA estimations
 AVG_SPEED_KMPH: float = float(os.getenv("AVG_SPEED_KMPH", "25.0"))
 
+# Vehicle Position Simulator Settings
+SIM_TICK_SECONDS: int = int(os.getenv("SIM_TICK_SECONDS", "3"))
+SIM_SPEED_MULTIPLIER: float = float(os.getenv("SIM_SPEED_MULTIPLIER", "20.0"))
+SIM_AUTOSTART: bool = os.getenv("SIM_AUTOSTART", "false").lower() in ("true", "1", "yes")
+
+# Vehicle Maintenance Service Interval (in km)
+SERVICE_INTERVAL_KM: float = float(os.getenv("SERVICE_INTERVAL_KM", "5000.0"))
+
+
 

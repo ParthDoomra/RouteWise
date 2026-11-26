@@ -25,6 +25,7 @@ class VehicleResponse(BaseModel):
     current_lat: Optional[float] = None
     current_lng: Optional[float] = None
     mileage_km: float
+    last_service_mileage_km: Optional[float] = 0.0
     last_service_date: Optional[datetime.date] = None
 
     model_config = ConfigDict(from_attributes=True)

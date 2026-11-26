@@ -560,6 +560,14 @@ p {
   box-shadow: 0 0 0 3px rgba(63, 82, 46, 0.12);
 }
 
+/* ── Smooth vehicle and delivery marker movement animation ── */
+.custom-map-marker,
+.customer-car-marker,
+.vehicle-moving-marker,
+.leaflet-marker-pane .leaflet-marker-icon {
+  transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
 /* ── Accessibility: Reduced Motion ── */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {

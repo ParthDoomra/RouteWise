@@ -265,6 +265,8 @@ def deliver_route_stop(
             vehicle.status = "available"
             route_km = float(route.total_distance_km or 0.0)
             vehicle.mileage_km = float(vehicle.mileage_km or 0.0) + route_km
+            from app.services.maintenance import check_maintenance
+            check_maintenance(vehicle, db)
 
     db.commit()
     db.refresh(stop)

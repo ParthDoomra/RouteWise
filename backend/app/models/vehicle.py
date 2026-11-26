@@ -17,6 +17,7 @@ class Vehicle(Base):
     current_lat = Column(Numeric(10, 6), nullable=True)
     current_lng = Column(Numeric(10, 6), nullable=True)
     mileage_km = Column(Numeric(10, 2), default=0.0, nullable=False)
+    last_service_mileage_km = Column(Numeric(10, 2), default=0.0, nullable=True)
     last_service_date = Column(Date, nullable=True)
 
     # Relationships

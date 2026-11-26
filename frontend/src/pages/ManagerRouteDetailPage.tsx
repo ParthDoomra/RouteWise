@@ -42,6 +42,33 @@ const createNumberedIcon = (num: number, isDepot: boolean = false) => {
   });
 };
 
+const createVehicleMarker = (_plate?: string) => {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" width="44" height="44">
+      <defs>
+        <filter id="vm-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="rgba(43,36,30,0.35)"/>
+        </filter>
+      </defs>
+      <circle cx="22" cy="22" r="18" fill="none" stroke="#4A5D3A" stroke-width="2.5" opacity="0.6">
+        <animate attributeName="r" values="16;24;28" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.8;0.3;0" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="22" cy="22" r="18" fill="#4A5D3A" stroke="#FAF7F2" stroke-width="2.5" filter="url(#vm-shadow)"/>
+      <path d="M14 26 L16 20 L28 20 L30 26 Z" fill="#FAF7F2"/>
+      <circle cx="17" cy="26" r="2.5" fill="#201A16"/>
+      <circle cx="27" cy="26" r="2.5" fill="#201A16"/>
+    </svg>
+  `;
+  return L.divIcon({
+    className: 'vehicle-moving-marker',
+    html: svg,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
+    popupAnchor: [0, -22],
+  });
+};
+
 export interface RouteStopItem {
   id: number;
   route_id: number;
@@ -80,6 +107,8 @@ export interface VehicleRecord {
   model: string | null;
   capacity_kg: number;
   status: string;
+  current_lat?: number | null;
+  current_lng?: number | null;
 }
 
 export interface PendingOrder {
@@ -158,6 +187,22 @@ export const ManagerRouteDetailPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Poll GET /vehicles every 3 seconds to update vehicle position marker live
+    const pollTimer = setInterval(async () => {
+      try {
+        const vRes = await apiClient.get<VehicleRecord[]>('/vehicles');
+        setCurrentVehicle((prev) => {
+          if (!prev) return prev;
+          const updated = vRes.data.find((v) => v.id === prev.id);
+          return updated || prev;
+        });
+      } catch {
+        // silent background poll
+      }
+    }, 3000);
+
+    return () => clearInterval(pollTimer);
   }, [vehicleId]);
 
   // Handle Order Selection in Plan Route Panel
@@ -718,6 +763,25 @@ export const ManagerRouteDetailPage: React.FC = () => {
                       </Marker>
                     );
                   })}
+
+                  {/* Assigned Vehicle Moving Marker */}
+                  {currentVehicle?.current_lat != null && currentVehicle?.current_lng != null && (
+                    <Marker
+                      position={[Number(currentVehicle.current_lat), Number(currentVehicle.current_lng)]}
+                      icon={createVehicleMarker(currentVehicle.plate_no)}
+                    >
+                      <Popup>
+                        <div style={{ fontFamily: 'var(--font-sans)', padding: '0.2rem' }}>
+                          <strong style={{ fontSize: '0.85rem', color: '#201A16' }}>
+                            {currentVehicle.plate_no} (Assigned Vehicle)
+                          </strong>
+                          <div style={{ fontSize: '0.75rem', color: '#6E6457', marginTop: '0.15rem' }}>
+                            Status: <strong>{currentVehicle.status}</strong>
+                          </div>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  )}
                 </MapContainer>
               </div>
 

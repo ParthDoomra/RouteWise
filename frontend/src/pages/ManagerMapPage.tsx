@@ -88,10 +88,20 @@ const MapFlyToHandler: React.FC<{ targetLocation: [number, number] | null }> = (
   return null;
 };
 
+export interface SimulatorStatus {
+  running: boolean;
+  tick_seconds: number;
+  speed_multiplier: number;
+}
+
 export const ManagerMapPage: React.FC = () => {
   const [vehicles, setVehicles] = useState<LiveMapVehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Simulator controls state
+  const [simStatus, setSimStatus] = useState<SimulatorStatus | null>(null);
+  const [isSimLoading, setIsSimLoading] = useState(false);
 
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'on_time' | 'delayed' | 'unassigned' | 'maintenance'>('all');
   const [selectedVehicle, setSelectedVehicle] = useState<LiveMapVehicle | null>(null);
@@ -100,9 +110,59 @@ export const ManagerMapPage: React.FC = () => {
   const [hasNoResults, setHasNoResults] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'inspector' | 'fleet'>('inspector');
 
-  const fetchMapData = async () => {
-    setIsLoading(true);
-    setFetchError(null);
+  const fetchSimStatus = async () => {
+    try {
+      const res = await apiClient.get<SimulatorStatus>('/simulator/status');
+      setSimStatus(res.data);
+    } catch {
+      // Simulator endpoints silently ignore if unauthorized
+    }
+  };
+
+  const handleStartSimulator = async () => {
+    setIsSimLoading(true);
+    try {
+      const res = await apiClient.post<SimulatorStatus>('/simulator/start');
+      setSimStatus(res.data);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Failed to start simulator';
+      alert(msg);
+    } finally {
+      setIsSimLoading(false);
+    }
+  };
+
+  const handleStopSimulator = async () => {
+    setIsSimLoading(true);
+    try {
+      const res = await apiClient.post<SimulatorStatus>('/simulator/stop');
+      setSimStatus(res.data);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Failed to stop simulator';
+      alert(msg);
+    } finally {
+      setIsSimLoading(false);
+    }
+  };
+
+  const handleChangeSimulatorSpeed = async (newSpeed: number) => {
+    setIsSimLoading(true);
+    try {
+      const res = await apiClient.post<SimulatorStatus>('/simulator/speed', { speed_multiplier: newSpeed });
+      setSimStatus(res.data);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.detail || err.message : 'Failed to set speed';
+      alert(msg);
+    } finally {
+      setIsSimLoading(false);
+    }
+  };
+
+  const fetchMapData = async (isInitial: boolean = false) => {
+    if (isInitial) {
+      setIsLoading(true);
+      setFetchError(null);
+    }
     try {
       const [vRes, dRes] = await Promise.all([
         apiClient.get<BackendVehicleRaw[]>('/vehicles'),
@@ -127,30 +187,43 @@ export const ManagerMapPage: React.FC = () => {
           driverName: driver ? driver.name : 'Unassigned',
           status: statusKey,
           statusRaw: v.status,
-          currentLat: v.current_lat != null ? Number(v.current_lat) : 12.9716,
-          currentLng: v.current_lng != null ? Number(v.current_lng) : 77.5946,
+          currentLat: v.current_lat != null ? Number(v.current_lat) : 12.9781,
+          currentLng: v.current_lng != null ? Number(v.current_lng) : 77.5695,
           capacityKg: Number(v.capacity_kg),
           mileageKm: Number(v.mileage_km || 0),
         };
       });
 
       setVehicles(mapped);
-      if (mapped.length > 0 && !selectedVehicle) {
+      if (mapped.length > 0 && !selectedVehicle && isInitial) {
         setSelectedVehicle(mapped[0]);
       }
     } catch (err: unknown) {
-      if (axios.isAxiosError(err)) {
-        setFetchError(err.response?.data?.detail || err.message || 'Cannot reach server');
-      } else {
-        setFetchError('Failed to load fleet coordinates from server');
+      if (isInitial) {
+        if (axios.isAxiosError(err)) {
+          setFetchError(err.response?.data?.detail || err.message || 'Cannot reach server');
+        } else {
+          setFetchError('Failed to load fleet coordinates from server');
+        }
       }
     } finally {
-      setIsLoading(false);
+      if (isInitial) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchMapData();
+    fetchMapData(true);
+    fetchSimStatus();
+
+    // Poll GET /vehicles every 3 seconds while page is open; clean up on unmount
+    const pollTimer = setInterval(() => {
+      fetchMapData(false);
+      fetchSimStatus();
+    }, 3000);
+
+    return () => clearInterval(pollTimer);
   }, []);
 
   const defaultCenter: [number, number] = vehicles.length > 0
@@ -230,10 +303,84 @@ export const ManagerMapPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Search + Filter Chips */}
+          {/* Search + Filter Chips + Simulation Control */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+            
+            {/* Simulation Demo Control Panel */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.55rem',
+                padding: '0.3rem 0.65rem',
+                borderRadius: '10px',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border-medium)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span
+                  style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: simStatus?.running ? 'var(--status-emerald-text)' : 'var(--text-muted)',
+                  }}
+                />
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Simulation (Demo Control)
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                {simStatus?.running ? (
+                  <button
+                    type="button"
+                    onClick={handleStopSimulator}
+                    disabled={isSimLoading}
+                    className="btn btn-secondary"
+                    style={{ padding: '0.25rem 0.65rem', fontSize: '0.72rem', fontWeight: 700 }}
+                  >
+                    ❚❚ Stop
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleStartSimulator}
+                    disabled={isSimLoading}
+                    className="btn btn-primary"
+                    style={{ padding: '0.25rem 0.65rem', fontSize: '0.72rem', fontWeight: 700 }}
+                  >
+                    ▶ Start
+                  </button>
+                )}
+
+                <select
+                  value={simStatus?.speed_multiplier || 20}
+                  onChange={(e) => handleChangeSimulatorSpeed(Number(e.target.value))}
+                  disabled={isSimLoading}
+                  style={{
+                    padding: '0.25rem 0.45rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-medium)',
+                    backgroundColor: '#FFFFFF',
+                    color: 'var(--text-main)',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value={1}>1x</option>
+                  <option value={5}>5x</option>
+                  <option value={20}>20x (Default)</option>
+                  <option value={50}>50x</option>
+                  <option value={100}>100x</option>
+                </select>
+              </div>
+            </div>
+
             <button
-              onClick={fetchMapData}
+              onClick={() => fetchMapData(false)}
               className="btn btn-secondary"
               style={{ fontSize: '0.78rem', padding: '0.4rem 0.75rem' }}
               title="Refresh vehicle telemetry"
@@ -361,7 +508,7 @@ export const ManagerMapPage: React.FC = () => {
             }}
           >
             <span>{fetchError}</span>
-            <button onClick={fetchMapData} className="btn btn-secondary" style={{ fontSize: '0.75rem' }}>Retry</button>
+            <button onClick={() => fetchMapData(true)} className="btn btn-secondary" style={{ fontSize: '0.75rem' }}>Retry</button>
           </div>
         )}
 

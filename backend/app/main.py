@@ -14,6 +14,7 @@ from app.routers import (
     notifications_router,
     orders_router,
     routes_router,
+    simulator_router,
     tracking_router,
     vehicles_router,
 )
@@ -21,7 +22,12 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan context: create database tables on startup and run safe migrations."""
+    """Application lifespan context: create database tables on startup, run migrations, and start background simulator."""
+    import asyncio
+    from app.database import SessionLocal
+    from app.services.maintenance import run_maintenance_sweep
+    from app.services.simulator import simulator
+
     Base.metadata.create_all(bind=engine)
     # Safe migration for existing tables
     from sqlalchemy import text
@@ -31,12 +37,30 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP WITH TIME ZONE;",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_service_mileage_km NUMERIC(10, 2) DEFAULT 0.0;",
+            "UPDATE vehicles SET last_service_mileage_km = mileage_km WHERE last_service_mileage_km IS NULL;",
         ]:
             try:
                 conn.execute(text(sql))
             except Exception:
                 pass
+
+    # Run maintenance check sweep over all vehicles on startup
+    sweep_db = SessionLocal()
+    try:
+        run_maintenance_sweep(sweep_db)
+    except Exception:
+        pass
+    finally:
+        sweep_db.close()
+
+    # Start vehicle position simulator background loop
+    sim_task = asyncio.create_task(simulator.run_loop())
+
     yield
+
+    simulator.shutdown()
+    sim_task.cancel()
 
 
 app = FastAPI(
@@ -68,6 +92,7 @@ core_routers = [
     routes_router,
     driver_router,
     tracking_router,
+    simulator_router,
 ]
 
 for r in core_routers:

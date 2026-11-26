@@ -47,6 +47,22 @@ def optimize_vehicle_route(
             detail=f"Vehicle with ID {payload.vehicle_id} not found",
         )
 
+    # 1b. Verify vehicle is not under an open maintenance ticket
+    from app.models.maintenance_ticket import MaintenanceTicket
+    open_ticket = (
+        db.query(MaintenanceTicket)
+        .filter(
+            MaintenanceTicket.vehicle_id == vehicle.id,
+            MaintenanceTicket.status == "open",
+        )
+        .first()
+    )
+    if open_ticket:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Vehicle {vehicle.plate_no} (ID {vehicle.id}) has an open maintenance ticket and cannot be assigned to a route",
+        )
+
     # 2. Verify all orders exist
     orders = db.query(Order).filter(Order.id.in_(payload.order_ids)).all()
     order_map = {o.id: o for o in orders}

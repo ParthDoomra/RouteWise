@@ -356,8 +356,17 @@ export const ManagerMaintenancePage: React.FC = () => {
                         </td>
 
                         <td style={{ padding: '0.9rem 1.25rem' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{r.trigger_type}</div>
-                          {r.description && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{r.description}</div>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem' }}>
+                            <span
+                              className={`status-badge ${r.trigger_type === 'mileage' ? 'badge-amber' : 'badge-slate'}`}
+                              style={{ fontSize: '0.68rem', padding: '0.15rem 0.45rem' }}
+                            >
+                              {r.trigger_type.toUpperCase()}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                            {r.description || (r.trigger_type === 'mileage' ? 'Service interval mileage reached' : 'Scheduled maintenance')}
+                          </div>
                         </td>
 
                         <td style={{ padding: '0.9rem 1.25rem' }}>
